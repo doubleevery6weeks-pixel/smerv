@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Crypto Charts Grid</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header>
+    <div class="row" style="margin-left:auto; gap:10px;">
+      <!-- ✅ Dynamic ticker input -->
+      <input type="text" id="new-symbol" placeholder="Enter symbol (e.g. ADAUSDT)">
+      <button id="add-chart">+ Add Chart</button>
+
+      <!-- ✅ Favorites dropdown -->
+      <select id="favorite-select">
+        <option value="">⭐ Favorites</option>
+      </select>
+
+      <!-- ✅ Global status -->
+      <div id="status-global">
+        <span class="dot-global"></span>
+        <span id="label-global">DISCONNECTED</span>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <div class="chart-grid" id="chart-grid">
+
+      <!-- ================= BTC Card ================= -->
+      <div class="chart-card chart-ticker" data-symbol="btcusdt" id="btc-card">
+        <div class="chart-header">
+          <div class="drag-handle" title="Drag to move">☰</div>
+          <label>
+            <input type="text" value="BTCUSDT" class="ticker-input" id="ticker-btc">
+            <span class="current-price" data-ticker="btcusdt"></span>
+          </label>
+          <span class="favorite-star" title="Add to favorites">★</span>
+          <select class="timeframe-select">
+            <option value="1m">1m</option>
+            <option value="5m" selected>5m</option>
+            <option value="15m">15m</option>
+            <option value="1h">1h</option>
+            <option value="4h">4h</option>
+            <option value="1d">1d</option>
+          </select>
+          <div class="right-controls">
+            <button class="toggle-indicators" title="Indicators">📊</button>
+            <button class="fullscreen-btn" title="Fullscreen">⛶</button>
+            <button class="remove-btn">✕</button>
+          </div>
+        </div>
+
+        <div class="chart-wrap">
+          <div id="chart-btc" class="tvchart"></div>
+          <div class="ema-badges"></div>
+        </div>
+
+        <div class="rsi-panel" id="rsi-panel-btc" style="display:none;">
+          <div class="rsi-header">
+            <span class="rsi-title">RSI (14)</span>
+            <span class="rsi-value" id="rsi-value-btc"></span>
+          </div>
+          <div id="rsi-chart-btc" class="rsi-chart"></div>
+        </div>
+
+        <!-- ✅ New MACD panel -->
+        <div class="macd-panel" id="macd-panel-btc" style="display:none;">
+          <div class="macd-header">
+            <span class="macd-title">MACD (12,26,9)</span>
+          </div>
+          <div id="macd-chart-btc" class="macd-chart"></div>
+        </div>
+
+        <div class="indicators-panel" id="indicators-btc">
+          <h4>Indicators</h4>
+          <div class="indicator-toggles">
+            <label><input type="checkbox" data-indicator="rsi"> Relative Strength Index (RSI)</label>
+            <label><input type="checkbox" data-indicator="ema"> Exponential Moving Averages (EMA)</label>
+            <label><input type="checkbox" data-indicator="volume"> Volume</label>
+            <!-- ✅ New MACD toggle -->
+            <label><input type="checkbox" data-indicator="macd"> MACD</label>
+          </div>
+          <div class="ema-settings-panel" id="ema-settings-btc" style="display:none;">
+            <h4>EMA Settings <button class="close-ema-settings" title="Close">✕</button></h4>
+            <div><label>Period:</label><input type="number" value="20" min="1" id="ema-period-btc1"><input type="color" value="#ff9800" id="ema-color-btc1"><label><input type="checkbox" class="ema-badge-toggle" checked> Show badge</label></div>
+            <div><label>Period:</label><input type="number" value="100" min="1" id="ema-period-btc2"><input type="color" value="#2196f3" id="ema-color-btc2"><label><input type="checkbox" class="ema-badge-toggle" checked> Show badge</label></div>
+            <div><label>Period:</label><input type="number" value="200" min="1" id="ema-period-btc3"><input type="color" value="#4caf50" id="ema-color-btc3"><label><input type="checkbox" class="ema-badge-toggle" checked> Show badge</label></div>
+            <div><label>Period:</label><input type="number" value="400" min="1" id="ema-period-btc4"><input type="color" value="#e91e63" id="ema-color-btc4"><label><input type="checkbox" class="ema-badge-toggle" checked> Show badge</label></div>
+            <button class="save-ema-btn" data-target="btc">Save</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ================= ETH Card ================= -->
+      <div class="chart-card chart-ticker" data-symbol="ethusdt" id="eth-card">
+        <div class="chart-header">
+          <div class="drag-handle" title="Drag to move">☰</div>
+          <label>
+            <input type="text" value="ETHUSDT" class="ticker-input" id="ticker-eth">
+            <span class="current-price" data-ticker="ethusdt"></span>
+          </label>
+          <span class="favorite-star" title="Add to favorites">★</span>
+          <select class="timeframe-select">
+            <option value="1m">1m</option>
+            <option value="5m" selected>5m</option>
+            <option value="15m">15m</option>
+            <option value="1h">1h</option>
+            <option value="4h">4h</option>
+            <option value="1d">1d</option>
+          </select>
+          <div class="right-controls">
+            <button class="toggle-indicators" title="Indicators">📊</button>
+            <button class="fullscreen-btn" title="Fullscreen">⛶</button>
+            <button class="remove-btn">✕</button>
+          </div>
+        </div>
+
+        <div class="chart-wrap">
+          <div id="chart-eth" class="tvchart"></div>
+          <div class="ema-badges"></div>
+        </div>
+
+        <div class="rsi-panel" id="rsi-panel-eth" style="display:none;">
+          <div class="rsi-header">
+            <span class="rsi-title">RSI (14)</span>
+            <span class="rsi-value" id="rsi-value-eth"></span>
+          </div>
+          <div id="rsi-chart-eth" class="rsi-chart"></div>
+        </div>
+
+        <!-- ✅ New MACD panel -->
+        <div class="macd-panel" id="macd-panel-eth" style="display:none;">
+          <div class="macd-header">
+            <span class="macd-title">MACD (12,26,9)</span>
+          </div>
+          <div id="macd-chart-eth" class="macd-chart"></div>
+        </div>
+
+        <div class="indicators-panel" id="indicators-eth">
+          <h4>Indicators</h4>
+          <div class="indicator-toggles">
+            <label><input type="checkbox" data-indicator="rsi"> Relative Strength Index (RSI)</label>
+            <label><input type="checkbox" data-indicator="ema"> Exponential Moving Averages (EMA)</label>
+            <label><input type="checkbox" data-indicator="volume"> Volume</label>
+            <!-- ✅ New MACD toggle -->
+            <label><input type="checkbox" data-indicator="macd"> MACD</label>
+          </div>
+          <div class="ema-settings-panel" id="ema-settings-eth" style="display:none;">
+            <h4>EMA Settings <button class="close-ema-settings" title="Close">✕</button></h4>
+            <div><label>Period:</label><input type="number" value="20" min="1" id="ema-period-eth1"><input type="color" value="#ff9800" id="ema-color-eth1"><label><input type="checkbox" class="ema-badge-toggle" checked> Show badge</label></div>
+            <div><label>Period:</label><input type="number" value="100" min="1" id="ema-period-eth2"><input type="color" value="#2196f3" id="ema-color-eth2"><label><input type="checkbox" class="ema-badge-toggle" checked> Show badge</label></div>
+            <div><label>Period:</label><input type="number" value="200" min="1" id="ema-period-eth3"><input type="color" value="#4caf50" id="ema-color-eth3"><label><input type="checkbox" class="ema-badge-toggle" checked> Show badge</label></div>
+            <div><label>Period:</label><input type="number" value="400" min="1" id="ema-period-eth4"><input type="color" value="#e91e63" id="ema-color-eth4"><label><input type="checkbox" class="ema-badge-toggle" checked> Show badge</label></div>
+            <button class="save-ema-btn" data-target="eth">Save</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ================= SOL Card ================= -->
+      <div class="chart-card chart-ticker" data-symbol="solusdt" id="sol-card">
+        <div class="chart-header">
+          <div class="drag-handle" title="Drag to move">☰</div>
+          <label>
+            <input type="text" value="SOLUSDT" class="ticker-input" id="ticker-sol">
+            <span class="current-price" data-ticker="solusdt"></span>
+          </label>
+          <span class="favorite-star" title="Add to favorites">★</span>
+          <select class="timeframe-select">
+            <option value="1m">1m</option>
+            <option value="5m" selected>5m</option>
+            <option value="15m">15m</option>
+            <option value="1h">1h</option>
+            <option value="4h">4h</option>
+            <option value="1d">1d</option>
+          </select>
+          <div class="right-controls">
+            <button class="toggle-indicators" title="Indicators">📊</button>
+            <button class="fullscreen-btn" title="Fullscreen">⛶</button>
+            <button class="remove-btn">✕</button>
+          </div>
+        </div>
+
+        <div class="chart-wrap">
+          <div id="chart-sol" class="tvchart"></div>
+          <div class="ema-badges"></div>
+        </div>
+
+        <div class="rsi-panel" id="rsi-panel-sol" style="display:none;">
+          <div class="rsi-header">
+            <span class="rsi-title">RSI (14)</span>
+            <span class="rsi-value" id="rsi-value-sol"></span>
+          </div>
+          <div id="rsi-chart-sol" class="rsi-chart"></div>
+        </div>
+
+        <!-- ✅ New MACD panel -->
+        <div class="macd-panel" id="macd-panel-sol" style="display:none;">
+          <div class="macd-header">
+            <span class="macd-title">MACD (12,26,9)</span>
+          </div>
+          <div id="macd-chart-sol" class="macd-chart"></div>
+        </div>
+
+        <div class="indicators-panel" id="indicators-sol">
+          <h4>Indicators</h4>
+          <div class="indicator-toggles">
+            <label><input type="checkbox" data-indicator="rsi"> Relative Strength Index (RSI)</label>
+            <label><input type="checkbox" data-indicator="ema"> Exponential Moving Averages (EMA)</label>
+            <label><input type="checkbox" data-indicator="volume"> Volume</label>
+            <!-- ✅ New MACD toggle -->
+            <label><input type="checkbox" data-indicator="macd"> MACD</label>
+          </div>
+          <div class="ema-settings-panel" id="ema-settings-sol" style="display:none;">
+            <h4>EMA Settings <button class="close-ema-settings" title="Close">✕</button></h4>
+            <div><label>Period:</label><input type="number" value="20" min="1" id="ema-period-sol1"><input type="color" value="#ff9800" id="ema-color-sol1"><label><input type="checkbox" class="ema-badge-toggle" checked> Show badge</label></div>
+            <div><label>Period:</label><input type="number" value="100" min="1" id="ema-period-sol2"><input type="color" value="#2196f3" id="ema-color-sol2"><label><input type="checkbox" class="ema-badge-toggle" checked> Show badge</label></div>
+            <div><label>Period:</label><input type="number" value="200" min="1" id="ema-period-sol3"><input type="color" value="#4caf50" id="ema-color-sol3"><label><input type="checkbox" class="ema-badge-toggle" checked> Show badge</label></div>
+            <div><label>Period:</label><input type="number" value="400" min="1" id="ema-period-sol4"><input type="color" value="#e91e63" id="ema-color-sol4"><label><input type="checkbox" class="ema-badge-toggle" checked> Show badge</label></div>
+            <button class="save-ema-btn" data-target="sol">Save</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ================= BNB Card ================= -->
+      <div class="chart-card chart-ticker" data-symbol="bnbusdt" id="bnb-card">
+        <div class="chart-header">
+          <div class="drag-handle" title="Drag to move">☰</div>
+          <label>
+            <input type="text" value="BNBUSDT" class="ticker-input" id="ticker-bnb">
+            <span class="current-price" data-ticker="bnbusdt"></span>
+          </label>
+          <span class="favorite-star" title="Add to favorites">★</span>
+          <select class="timeframe-select">
+            <option value="1m">1m</option>
+            <option value="5m" selected>5m</option>
+            <option value="15m">15m</option>
+            <option value="1h">1h</option>
+            <option value="4h">4h</option>
+            <option value="1d">1d</option>
+          </select>
+          <div class="right-controls">
+            <button class="toggle-indicators" title="Indicators">📊</button>
+            <button class="fullscreen-btn" title="Fullscreen">⛶</button>
+            <button class="remove-btn">✕</button>
+          </div>
+        </div>
+
+        <div class="chart-wrap">
+          <div id="chart-bnb" class="tvchart"></div>
+          <div class="ema-badges"></div>
+        </div>
+
+        <div class="rsi-panel" id="rsi-panel-bnb" style="display:none;">
+          <div class="rsi-header">
+            <span class="rsi-title">RSI (14)</span>
+            <span class="rsi-value" id="rsi-value-bnb"></span>
+          </div>
+          <div id="rsi-chart-bnb" class="rsi-chart"></div>
+        </div>
+
+        <!-- ✅ New MACD panel -->
+        <div class="macd-panel" id="macd-panel-bnb" style="display:none;">
+          <div class="macd-header">
+            <span class="macd-title">MACD (12,26,9)</span>
+          </div>
+          <div id="macd-chart-bnb" class="macd-chart"></div>
+        </div>
+
+        <div class="indicators-panel" id="indicators-bnb">
+          <h4>Indicators</h4>
+          <div class="indicator-toggles">
+            <label><input type="checkbox" data-indicator="rsi"> Relative Strength Index (RSI)</label>
+            <label><input type="checkbox" data-indicator="ema"> Exponential Moving Averages (EMA)</label>
+            <label><input type="checkbox" data-indicator="volume"> Volume</label>
+            <!-- ✅ New MACD toggle -->
+            <label><input type="checkbox" data-indicator="macd"> MACD</label>
+          </div>
+          <div class="ema-settings-panel" id="ema-settings-bnb" style="display:none;">
+            <h4>EMA Settings <button class="close-ema-settings" title="Close">✕</button></h4>
+            <div><label>Period:</label><input type="number" value="20" min="1" id="ema-period-bnb1"><input type="color" value="#ff9800" id="ema-color-bnb1"><label><input type="checkbox" class="ema-badge-toggle" checked> Show badge</label></div>
+            <div><label>Period:</label><input type="number" value="100" min="1" id="ema-period-bnb2"><input type="color" value="#2196f3" id="ema-color-bnb2"><label><input type="checkbox" class="ema-badge-toggle" checked> Show badge</label></div>
+            <div><label>Period:</label><input type="number" value="200" min="1" id="ema-period-bnb3"><input type="color" value="#4caf50" id="ema-color-bnb3"><label><input type="checkbox" class="ema-badge-toggle" checked> Show badge</label></div>
+            <div><label>Period:</label><input type="number" value="400" min="1" id="ema-period-bnb4"><input type="color" value="#e91e63" id="ema-color-bnb4"><label><input type="checkbox" class="ema-badge-toggle" checked> Show badge</label></div>
+            <button class="save-ema-btn" data-target="bnb">Save</button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </main>
+
+  <!-- Scripts -->
+  <script src="./binance-socket.js" type="module"></script>
+  <script src="./lightweightchart.js" type="module"></script>
+  <script src="./ticker-select.js" type="module"></script>
+</body>
+</html>
