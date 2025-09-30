@@ -1,25 +1,21 @@
 // superguppy-indicator.js
+// Based on classic Super Guppy (CM SuperGuppy, TradingView/PineScript logic)
+
 import { BaseIndicator } from './base-indicator.js';
 
-/**
- * Super Guppy Indicator (GMMA style)
- * - Fast EMAs (3–21)
- * - Slow EMAs (24–66)
- * - Baseline EMA200
- * - Colors ribbons depending on bullish / bearish / neutral alignment
- */
 export class SuperGuppyIndicator extends BaseIndicator {
   constructor(chart) {
     super(chart);
-    this.series = [];
-    this.emaPeriods = [
-      3, 6, 9, 12, 15, 18, 21,   // fast group
-      24, 27, 30, 33, 36, 39, 42, 45, 48, 51, 54, 57, 60, 63, 66, // slow group
-      200                        // baseline
-    ];
+    this.chart = chart;
+    // Classic periods
+    this.fastPeriods = [3, 6, 9, 12, 15, 18, 21];
+    this.slowPeriods = [24, 27, 30, 33, 36, 39, 42, 45, 48, 51, 54, 57, 60, 63, 66];
+    this.emaPeriods = this.fastPeriods.concat(this.slowPeriods, [200]);
+    this._isDestroyed = false;
+    this.allSeries = [];
   }
 
-  // simple EMA calculator
+  // Classic EMA calculation (returns full array of {time, value})
   calcEMA(values, period) {
     if (!values || values.length === 0) return [];
     const k = 2 / (period + 1);
@@ -33,88 +29,136 @@ export class SuperGuppyIndicator extends BaseIndicator {
     return emaArr;
   }
 
-  calculate(data) {
-    if (!data || !data.length) return [];
-    return this.emaPeriods.map(p => this.calcEMA(data, p));
+  static splitColorSegments(emaArr, colorArr) {
+    if (emaArr.length === 0) return [];
+    const segments = [];
+    let currentColor = colorArr[0];
+    let currentSeg = [emaArr[0]];
+    for (let i = 1; i < emaArr.length; i++) {
+      if (colorArr[i] === currentColor) {
+        currentSeg.push(emaArr[i]);
+      } else {
+        if (currentSeg.length > 1) segments.push({ points: currentSeg, color: currentColor });
+        currentColor = colorArr[i];
+        currentSeg = [emaArr[i - 1], emaArr[i]];
+      }
+    }
+    if (currentSeg.length > 1) segments.push({ points: currentSeg, color: currentColor });
+    return segments;
   }
 
   render() {
-    if (this._isDestroyed || !this.chart) return;
-    
-    try {
-      // create all EMA line series
-      this.series = this.emaPeriods.map((p, idx) => {
-        return this.chart.addLineSeries({
-          lineWidth: (idx === 6 || idx === 21 || idx === 22) ? 2 : 1, // highlight edges
-          priceLineVisible: false,
-          crossHairMarkerVisible: false
-        });
-      });
-    } catch (e) {
-      console.error('Failed to create SuperGuppy series:', e);
-    }
+    // No-op: series are created dynamically in update()
   }
 
   update(data) {
-    if (this._isDestroyed || !this.series.length || !data || data.length === 0) return;
+    if (this._isDestroyed || !data || data.length === 0) return;
+    // Remove all previous series
+    if (this.allSeries.length && this.chart) {
+      this.allSeries.forEach(s => this.chart.removeSeries(s));
+      this.allSeries = [];
+    }
 
-    const emaResults = this.calculate(data);
+    // Compute all EMAs
+    const emas = this.emaPeriods.map(p => this.calcEMA(data, p));
+    const N = data.length;
+    const fastEMAs = emas.slice(0, this.fastPeriods.length);
+    const slowEMAs = emas.slice(this.fastPeriods.length, this.fastPeriods.length + this.slowPeriods.length);
 
-    // --- Detect trend direction ---
-    const fastGroup = emaResults.slice(0, 7).map(arr => arr.at(-1)?.value || 0);
-    const slowGroup = emaResults.slice(7, 22).map(arr => arr.at(-1)?.value || 0);
+    // For each bar, only compute colors if all EMAs for that bar are defined
+    let colFinal = [];
+    let colFinal2 = [];
 
-    const fastBull = fastGroup[0] > fastGroup[fastGroup.length - 1];
-    const fastBear = fastGroup[0] < fastGroup[fastGroup.length - 1];
+    for (let i = 0; i < N; i++) {
+      // Check all fast and slow EMAs exist at this bar
+      let allFastDefined = fastEMAs.every(arr => arr[i] && typeof arr[i].value === 'number');
+      let allSlowDefined = slowEMAs.every(arr => arr[i] && typeof arr[i].value === 'number');
 
-    const slowBull = slowGroup[0] > slowGroup[slowGroup.length - 1];
-    const slowBear = slowGroup[0] < slowGroup[slowGroup.length - 1];
-
-    let fastColor = fastBull ? 'aqua' : fastBear ? 'orange' : 'gray';
-    let slowColor = slowBull ? 'lime' : slowBear ? 'red' : 'gray';
-
-    // --- Paint all series ---
-    emaResults.forEach((emaArr, idx) => {
-      if (this._isDestroyed || !this.series[idx]) return;
-      
-      let color = 'gray';
-
-      if (idx < 7) {
-        // fast group gradient
-        const opacity = 0.4 + idx * 0.1;
-        if (fastColor === 'aqua') color = `rgba(0,255,255,${opacity})`;
-        if (fastColor === 'orange') color = `rgba(255,165,0,${opacity})`;
-        if (fastColor === 'gray') color = `rgba(128,128,128,${opacity})`;
-      } else if (idx < 22) {
-        // slow group gradient
-        const relIdx = idx - 7;
-        const opacity = 0.3 + relIdx * 0.03;
-        if (slowColor === 'lime') color = `rgba(50,205,50,${opacity})`;
-        if (slowColor === 'red') color = `rgba(255,0,0,${opacity})`;
-        if (slowColor === 'gray') color = `rgba(128,128,128,${opacity})`;
-      } else {
-        // EMA200 baseline
-        color = '#ffffff';
+      if (!allFastDefined || !allSlowDefined) {
+        colFinal.push('gray');
+        colFinal2.push('gray');
+        continue;
       }
 
-      try {
-        this.series[idx].setData(emaArr);
-        this.series[idx].applyOptions({ color });
-      } catch (err) {
-        console.warn('SuperGuppy update error', err);
+      // Fast group up/down (classic guppy: all fast in order)
+      let fastL = true, fastS = true;
+      for (let k = 0; k < this.fastPeriods.length - 1; k++) {
+        fastL = fastL && (fastEMAs[k][i].value > fastEMAs[k + 1][i].value);
+        fastS = fastS && (fastEMAs[k][i].value < fastEMAs[k + 1][i].value);
       }
-    });
+      // Slow group up/down
+      let slowL = true, slowS = true;
+      for (let k = 0; k < this.slowPeriods.length - 1; k++) {
+        slowL = slowL && (slowEMAs[k][i].value > slowEMAs[k + 1][i].value);
+        slowS = slowS && (slowEMAs[k][i].value < slowEMAs[k + 1][i].value);
+      }
+
+      // Colors as per TradingView/PineScript
+      // Fast: "aqua" if fastL && slowL, "orange" if fastS && slowS, "gray" otherwise
+      if (fastL && slowL) colFinal.push('aqua');
+      else if (fastS && slowS) colFinal.push('orange');
+      else colFinal.push('gray');
+
+      // Slow: "lime" if slowL, "red" if slowS, "gray" otherwise
+      if (slowL) colFinal2.push('lime');
+      else if (slowS) colFinal2.push('red');
+      else colFinal2.push('gray');
+    }
+
+    // Draw all fast EMAs (per-bar colors)
+    for (let f = 0; f < this.fastPeriods.length; f++) {
+      const emaArr = fastEMAs[f];
+      const colorArr = colFinal;
+      const segments = SuperGuppyIndicator.splitColorSegments(emaArr, colorArr);
+      segments.forEach(seg => {
+        const lineSeries = this.chart.addLineSeries({
+          color: seg.color,
+          lineWidth: (f === 0 || f === this.fastPeriods.length - 1) ? 2 : 1,
+          priceLineVisible: false,
+          crossHairMarkerVisible: false,
+          lastValueVisible: false // <--- disables colored price marker for this series
+        });
+        lineSeries.setData(seg.points);
+        this.allSeries.push(lineSeries);
+      });
+    }
+
+    // Draw all slow EMAs (per-bar colors)
+    for (let s = 0; s < this.slowPeriods.length; s++) {
+      const emaArr = slowEMAs[s];
+      const colorArr = colFinal2;
+      const segments = SuperGuppyIndicator.splitColorSegments(emaArr, colorArr);
+      segments.forEach(seg => {
+        const lineSeries = this.chart.addLineSeries({
+          color: seg.color,
+          lineWidth: (s === 0 || s === this.slowPeriods.length - 1) ? 2 : 1,
+          priceLineVisible: false,
+          crossHairMarkerVisible: false,
+          lastValueVisible: false // <--- disables colored price marker for this series
+        });
+        lineSeries.setData(seg.points);
+        this.allSeries.push(lineSeries);
+      });
+    }
+
+    // Baseline EMA200 (white)
+    const ema200 = emas[emas.length - 1];
+    if (ema200 && ema200.length > 0) {
+      const lineSeries = this.chart.addLineSeries({
+        color: '#fff',
+        lineWidth: 2,
+        priceLineVisible: false,
+        crossHairMarkerVisible: false,
+        lastValueVisible: false // <--- disables colored price marker for this series
+      });
+      lineSeries.setData(ema200);
+      this.allSeries.push(lineSeries);
+    }
   }
 
-  /**
-   * Incremental update for last candle
-   */
   updateLast(candle, history) {
-    if (this._isDestroyed || !this.series.length || !candle || !history?.length) return;
-    // simplest approach: reuse full update
+    if (this._isDestroyed || !history?.length) return;
     this.update(history);
-
-    // ⚡ optimization idea: calculate only last EMA values and call series[idx].update(lastPoint)
   }
 
   remove() {
@@ -123,18 +167,13 @@ export class SuperGuppyIndicator extends BaseIndicator {
 
   destroy() {
     if (this._isDestroyed) return;
-
-    if (this.series.length && this.chart) {
-      this.series.forEach(s => {
-        try {
-          this.chart.removeSeries(s);
-        } catch (e) {
-          console.warn('Error removing SuperGuppy series:', e);
-        }
+    if (this.allSeries.length && this.chart) {
+      this.allSeries.forEach(s => {
+        try { this.chart.removeSeries(s); } catch {}
       });
-      this.series = [];
+      this.allSeries = [];
     }
-    
     super.destroy();
+    this._isDestroyed = true;
   }
 }
