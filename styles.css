@@ -9,6 +9,24 @@
   --danger: #ff5c74;
 }
 
+/* Light theme overrides */
+:root[data-theme="light"] {
+  --bg: #f5f7fa;
+  --panel: #fff;
+  --border: #d0d7de;
+  --text: #23272e;
+  --muted: #6e7781;
+  --accent: #2176ff;
+  --ok: #2ecc71;
+  --danger: #d7263d;
+}
+:root[data-theme="light"] .chart-header { background: #f5f7fa; }
+:root[data-theme="light"] .tvchart,
+:root[data-theme="light"] .chart-wrap { background: #f5f7fa; }
+:root[data-theme="light"] .rsi-panel,
+:root[data-theme="light"] .macd-panel { background: #fff; }
+:root[data-theme="light"] .ema-badges span { background: rgba(255,255,255,0.85) !important; color: #23272e !important; }
+
 /* Reset & Base */
 * { box-sizing: border-box; }
 html, body {
@@ -79,6 +97,24 @@ header {
   color: var(--muted);
 }
 
+/* Error banner style */
+.error-banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  background: var(--danger);
+  color: #fff;
+  padding: 12px 0;
+  text-align: center;
+  font-weight: bold;
+  font-size: 1.04em;
+  z-index: 2000;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.18);
+  border-bottom: 2px solid #b71c1c;
+  letter-spacing: 0.02em;
+}
+
 /* Grid layout */
 main {
   height: calc(100vh - 40px);
@@ -92,7 +128,6 @@ main {
   height: 100%;
   grid-auto-rows: 1fr;
 }
-/* Smart auto-fit layouts */
 .chart-grid:has(.chart-card:nth-child(1):last-child) { grid-template-columns: 1fr; }
 .chart-grid:has(.chart-card:nth-child(4):last-child) { grid-template-columns: repeat(2, 1fr); }
 .chart-grid:has(.chart-card:nth-child(5):last-child) { grid-template-columns: repeat(2, 1fr); }
@@ -102,43 +137,71 @@ main {
 
 /* Chart Card */
 .chart-card {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  width: 100%;
   background: var(--panel);
   border-radius: 8px;
   border: 1px solid var(--border);
-  display: flex;
-  flex-direction: column;
-  width: 100%;
-  height: 100%;
-  min-width: 0;
-  min-height: 0;
-  overflow: hidden;
   position: relative;
-  touch-action: manipulation;
+  overflow: hidden;
+  padding: 0;
 }
 .chart-card.placeholder {
   background: none;
   border: none;
 }
 
-/* Chart Header */
+/* Compact header */
 .chart-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 12px 14px;
+  gap: 7px;
+  padding: 6px 10px;
   border-bottom: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.02);
+  background: #23272e;
+  font-size: 0.95em;
+  min-height: 0;
+}
+
+.ticker-input,
+.current-price,
+.timeframe-select,
+.favorite-star,
+.right-controls button {
+  font-size: 1em;
+  min-width: 0;
+  min-height: 0;
+  padding: 3px 6px;
+}
+
+.chart-wrap {
+  flex: 1 1 0%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  margin: 0;
+  padding: 0;
   position: relative;
+  background: #11161d; /* Ensures chart area is always dark */
+}
+
+.tvchart {
+  flex: 1 1 0%;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  background: #11161d !important; /* Force chart background dark */
+  border-radius: 0;
+  box-sizing: border-box;
 }
 
 /* === EMA Badges overlayed inside chart === */
-.chart-wrap {
-  flex: 3;
-  display: flex;
-  min-height: 0;
-  position: relative; /* anchor */
-}
-.tvchart { width: 100%; height: 100%; }
 .chart-wrap .ema-badges {
   position: absolute;
   top: 8px;
@@ -169,14 +232,14 @@ main {
 /* Drag handle */
 .drag-handle {
   cursor: grab;
-  font-size: 22px;
-  padding: 6px 10px;
+  font-size: 20px;
+  padding: 4px 8px;
   color: var(--muted);
   user-select: none;
   touch-action: manipulation;
   border-radius: 8px;
-  min-width: 44px;
-  min-height: 44px;
+  min-width: 32px;
+  min-height: 32px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -192,58 +255,90 @@ main {
   border: none;
   color: var(--text);
   font-weight: 600;
-  font-size: 18px;
+  font-size: 1em;
   width: 90px;
   min-width: 60px;
-  padding: 6px 2px;
-  min-height: 36px;
+  padding: 3px 2px;
+  min-height: 24px;
 }
 .current-price {
   font-weight: 700;
   margin-left: 4px;
-  font-size: 18px;
+  font-size: 1em;
 }
 .current-price.up { color: var(--ok); }
 .current-price.down { color: var(--danger); }
 
 /* Controls */
-.right-controls { display: flex; align-items: center; gap: 14px; }
+.right-controls { display: flex; align-items: center; gap: 10px; }
 
 /* Buttons */
 .remove-btn {
   background: transparent;
   border: none;
   color: var(--danger);
-  font-size: 22px;
+  font-size: 1.2em;
   cursor: pointer;
-  margin-left: 8px;
-  min-width: 44px;
-  min-height: 44px;
+  margin-left: 6px;
+  min-width: 32px;
+  min-height: 32px;
   border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 .remove-btn:hover { color: #ff808f; background: var(--border); }
+
 .expand-btn,
 .fullscreen-btn,
-.toggle-indicators {
+.toggle-indicators,
+.drawing-tools-btn,
+.custom-indicator-btn {
   background: transparent;
   border: none;
   color: var(--text);
-  font-size: 22px;
+  font-size: 1.2em;
   cursor: pointer;
-  padding: 8px;
+  padding: 6px;
   border-radius: 8px;
-  min-width: 44px;
-  min-height: 44px;
+  min-width: 32px;
+  min-height: 32px;
   display: flex;
   align-items: center;
   justify-content: center;
+  transition: all 0.2s ease;
 }
+
 .expand-btn:hover,
 .fullscreen-btn:hover,
-.toggle-indicators:hover { color: var(--accent); background: var(--border); }
+.toggle-indicators:hover,
+.drawing-tools-btn:hover,
+.custom-indicator-btn:hover { 
+  color: var(--accent); 
+  background: var(--border); 
+}
+
+/* ✅ Drawing Tools Button Active State */
+.drawing-tools-btn.active {
+  background: var(--accent);
+  color: #fff;
+}
+
+/* ✅ Drawing Toolbar Styles */
+.drawing-toolbar {
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.drawing-toolbar button {
+  transition: all 0.2s ease;
+}
+
+.drawing-toolbar button:hover {
+  transform: scale(1.1);
+  background: rgba(33, 118, 255, 0.2) !important;
+}
 
 /* Fullscreen mode */
 .chart-card.fullscreen {
@@ -260,24 +355,31 @@ main {
 .chart-card.fullscreen .chart-wrap { flex: 3; }
 .chart-card.fullscreen .rsi-panel { flex: 1; }
 
+/* Panels - hide by default (no space used) */
+.rsi-panel, .macd-panel, .indicators-panel, .ema-settings-panel {
+  display: none;
+  max-height: 0;
+  overflow: hidden;
+  padding: 0;
+  margin: 0;
+  background: #161b22; /* Ensure dark background for panels */
+}
+
+.rsi-panel.active, .macd-panel.active, .indicators-panel.active, .ema-settings-panel.active {
+  display: flex !important;
+  max-height: 400px;
+  overflow: auto;
+  padding: 12px;
+}
+
 /* Indicators Panel */
 .indicators-panel {
   background: rgba(255,255,255,0.02);
   border-top: 1px solid var(--border);
-  padding: 14px;
   font-size: 15px;
   color: var(--text);
-  overflow: hidden;
-  max-height: 0;
-  opacity: 0;
-  transition: max-height 0.3s ease, opacity 0.3s ease;
-  display: flex;
   flex-direction: column;
-  gap: 20px;
-}
-.indicators-panel.active {
-  max-height: 800px;
-  opacity: 1;
+  gap: 16px;
 }
 .indicators-panel h4 {
   margin: 0 0 8px;
@@ -287,7 +389,7 @@ main {
 .indicator-toggles {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 10px;
   margin-bottom: 10px;
 }
 .indicator-toggles label {
@@ -297,22 +399,13 @@ main {
 
 /* RSI Panel */
 .rsi-panel {
-  min-height: 120px;
+  min-height: 80px;
   display: flex;
   flex-direction: column;
   position: relative;
-  max-height: 0;
-  overflow: hidden;
-  opacity: 0;
-  transition: max-height 0.3s ease, opacity 0.3s ease;
-  padding: 8px 0;
-  /* For manual resizing */
   resize: none;
   box-sizing: border-box;
-}
-.rsi-panel.active {
-  max-height: 400px;
-  opacity: 1;
+  background: #161b22; /* Ensure dark background */
 }
 .rsi-header {
   position: absolute;
@@ -328,44 +421,57 @@ main {
   border: 1px solid var(--border);
   border-radius: 6px;
   padding: 2px 6px;
-  font-size: 12px;
+  font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
   color: var(--accent);
 }
 .rsi-chart {
   flex: 1;
-  min-height: 100px;
-  /* allow dynamic resizing */
+  min-height: 60px;
   transition: height 0.15s;
   overflow: visible;
+  background: #11161d;
 }
 
 /* MACD Panel */
 .macd-panel {
-  min-height: 150px;
-  max-height: 400px;
+  min-height: 80px;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
-  opacity: 0;
-  transition: max-height 0.3s ease, opacity 0.3s ease;
   position: relative;
-  /* For manual resizing */
   resize: none;
   box-sizing: border-box;
+  background: #161b22; /* Ensure dark background */
 }
-.macd-panel.active {
-  opacity: 1;
+.macd-header {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  display: flex;
+  gap: 6px;
+  z-index: 2;
+}
+.macd-title {
+  font-weight: 600;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 2px 6px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--accent);
 }
 .macd-chart {
   flex: 1;
-  min-height: 150px;
+  min-height: 60px;
   transition: height 0.15s;
   overflow: visible;
+  background: #11161d;
 }
 
-/* === Indicator Resize Handle === */
+/* Indicator Resize Handle */
 .indicator-resize-handle {
   position: absolute;
   bottom: 0; left: 0; right: 0;
@@ -386,10 +492,9 @@ main {
 
 /* EMA Settings Panel */
 .ema-settings-panel {
-  display: none;
   flex-direction: column;
-  gap: 10px;
-  padding: 12px 16px;
+  gap: 8px;
+  padding: 10px 12px;
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 12px;
@@ -401,7 +506,7 @@ main {
 }
 .ema-settings-panel h4 {
   margin: 0 0 6px;
-  font-size: 15px;
+  font-size: 14px;
   color: var(--accent);
   display: flex;
   justify-content: space-between;
@@ -411,7 +516,7 @@ main {
   background: transparent;
   border: none;
   color: var(--muted);
-  font-size: 18px;
+  font-size: 16px;
   cursor: pointer;
   padding: 0 4px;
 }
@@ -419,25 +524,25 @@ main {
 .ema-settings-panel div {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
 }
 .ema-settings-panel label {
   flex: 1;
-  font-size: 13px;
+  font-size: 12px;
   color: var(--muted);
 }
 .ema-settings-panel input[type="number"] {
-  width: 72px;
-  padding: 4px 6px;
+  width: 60px;
+  padding: 3px 5px;
   background: var(--bg);
   border: 1px solid var(--border);
   color: var(--text);
   border-radius: 4px;
-  font-size: 14px;
+  font-size: 13px;
 }
 .ema-settings-panel input[type="color"] {
-  width: 34px;
-  height: 28px;
+  width: 28px;
+  height: 22px;
   border: none;
   cursor: pointer;
   border-radius: 4px;
@@ -446,14 +551,14 @@ main {
   background: var(--accent);
   border: none;
   border-radius: 4px;
-  padding: 7px 16px;
-  font-size: 14px;
+  padding: 6px 12px;
+  font-size: 13px;
   color: white;
   cursor: pointer;
-  margin-top: 6px;
+  margin-top: 4px;
   align-self: flex-end;
-  min-width: 44px;
-  min-height: 44px;
+  min-width: 32px;
+  min-height: 32px;
 }
 .save-ema-btn:hover { background: #3990ff; }
 
@@ -462,74 +567,67 @@ main {
   .chart-grid { grid-template-columns: 1fr; }
   .chart-card {
     min-width: 0;
-    min-height: 340px;
-    font-size: 15px;
+    min-height: 240px;
+    font-size: 14px;
   }
   .chart-header {
     flex-direction: column;
     align-items: stretch;
-    gap: 8px;
-    padding: 8px 6px;
+    gap: 6px;
+    padding: 6px 4px;
+    font-size: 0.95em;
   }
   .right-controls {
-    gap: 10px;
+    gap: 8px;
     justify-content: flex-end;
   }
-  .chart-wrap { min-height: 200px; }
+  .chart-wrap { min-height: 120px; }
   .indicators-panel {
-    padding: 10px 5px;
-    font-size: 14px;
-    gap: 10px;
+    padding: 8px 2px;
+    font-size: 13px;
+    gap: 8px;
   }
   .ema-settings-panel {
-    padding: 8px 2px;
+    padding: 6px 1px;
     min-width: 0;
     width: 100%;
   }
   .rsi-panel, .macd-panel {
-    padding: 6px 0;
+    padding: 4px 0;
   }
-  .chart-header,
-  .right-controls,
-  .indicator-toggles label,
-  .ema-settings-panel label,
-  .ema-settings-panel input,
-  .remove-btn,
-  .expand-btn,
-  .fullscreen-btn,
-  .toggle-indicators,
-  .save-ema-btn,
-  .drag-handle,
-  .ticker-input {
-    font-size: 17px !important;
-    min-width: 44px;
-    min-height: 44px;
+  /* ✅ Mobile Drawing Toolbar */
+  .drawing-toolbar {
+    top: 50px !important;
+    right: 4px !important;
+    flex-wrap: wrap;
+    max-width: 200px;
   }
 }
 
 /* Extra small screens/mobile stacking */
 @media (max-width: 600px) {
   .chart-card {
-    min-height: 280px;
-    font-size: 14px;
+    min-height: 120px;
+    font-size: 13px;
   }
   .chart-header {
     flex-direction: column;
     align-items: stretch;
-    gap: 3px;
-    padding: 5px 2px;
+    gap: 2px;
+    padding: 3px 1px;
+    font-size: 0.92em;
   }
   .right-controls {
     flex-direction: row;
-    gap: 8px;
+    gap: 6px;
     justify-content: flex-end;
   }
-  .chart-wrap { min-height: 120px; }
+  .chart-wrap { min-height: 60px; }
   .ema-settings-panel,
   .indicators-panel {
-    padding: 6px 1px;
-    font-size: 13px;
-    gap: 6px;
+    padding: 4px 1px;
+    font-size: 12px;
+    gap: 4px;
     width: 100%;
     min-width: 0;
   }
@@ -546,7 +644,7 @@ main {
   border: 2px dashed var(--accent);
   border-radius: 12px;
   background: rgba(63, 169, 245, 0.08);
-  min-height: 120px;
+  min-height: 80px;
 }
 .chart-card.dropped {
   animation: bounce-landing 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
@@ -560,12 +658,12 @@ main {
 /* Favorites */
 .favorite-star {
   cursor: pointer;
-  font-size: 30px;
-  margin-left: 8px;
+  font-size: 22px;
+  margin-left: 6px;
   color: var(--muted);
   transition: color 0.2s ease, transform 0.2s ease;
-  min-width: 44px;
-  min-height: 44px;
+  min-width: 28px;
+  min-height: 28px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -573,7 +671,7 @@ main {
 .favorite-star.favorited { color: gold; }
 .favorite-star:hover {
   color: gold;
-  transform: scale(1.2);
+  transform: scale(1.15);
 }
 
 /* Highlight effect */
@@ -582,26 +680,19 @@ main {
   transition: box-shadow 0.6s ease;
 }
 
-/* ------- Swipe and Long-tap for Drag & Drop (mobile) --------- */
-@media (pointer: coarse) {
-  .chart-card .drag-handle {
-    touch-action: none;
-  }
-}
-
 /* Tooltips/help icons for controls */
 .help-icon {
   display: inline-block;
   margin-left: 6px;
   color: var(--accent);
   cursor: pointer;
-  font-size: 18px;
+  font-size: 16px;
   vertical-align: middle;
   border-radius: 50%;
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
   text-align: center;
-  line-height: 18px;
+  line-height: 16px;
   outline: none;
   background: rgba(40,46,56,0.6);
   position: relative;
@@ -609,7 +700,7 @@ main {
 .help-icon:after {
   content: "?";
   font-weight: bold;
-  font-size: 14px;
+  font-size: 13px;
 }
 .help-icon[title] {
   position: relative;
@@ -622,15 +713,35 @@ main {
   left: 110%;
   top: 0;
   background: #24292f;
-  color: #fff;
+  color: #ffffff;
   border-radius: 6px;
   padding: 7px 14px;
-  font-size: 13px;
+  font-size: 12px;
   white-space: pre-line;
   z-index: 1000;
-  box-shadow: 0 4px 20px rgba(0,0,0,0.35);
-  min-width: 160px;
-  max-width: 320px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
+  min-width: 120px;
+  max-width: 220px;
   pointer-events: none;
   opacity: 0.98;
+}
+
+/* Suggestion box */
+#symbol-suggestions {
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+  max-height: 200px;
+  overflow-y: auto;
+  z-index: 3000;
+}
+.suggestion-item {
+  padding: 4px 8px;
+  cursor: pointer;
+}
+.suggestion-item:hover {
+  background: #23272e;
+  color: var(--accent);
 }

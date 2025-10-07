@@ -3,7 +3,8 @@ import BinanceSocket from './binance-socket.js';
 
 export class ChartDataManager {
   constructor() {
-    this.socketHelper = new BinanceSocket();
+    // Use a singleton for socketHelper to enable pooling and less resource usage
+    this.socketHelper = BinanceSocket;
 
     // History per chart: key = `${symbol}-${interval}`, value = array of candles
     this.historicalData = new Map();
@@ -45,6 +46,7 @@ export class ChartDataManager {
       return;
     }
 
+    // Callback to update chart and history
     const cb = (update, closed) => {
       if (!update) return;
       const candle = { ...update, closed };
@@ -67,7 +69,7 @@ export class ChartDataManager {
     };
 
     this.subscriptions.set(key, cb);
-    await this.socketHelper.startSocket(symbol, interval, cb);
+    this.socketHelper.subscribe(symbol, interval, cb);
   }
 
   /**
@@ -86,7 +88,7 @@ export class ChartDataManager {
 
     const cb = this.subscriptions.get(key);
     try {
-      await this.socketHelper.unsubscribeCallback(symbol, interval, cb);
+      await this.socketHelper.unsubscribe(symbol, interval, cb);
     } catch (err) {
       console.warn(`[ChartDataManager] Failed to unsubscribe cleanly from ${key}`, err);
     }

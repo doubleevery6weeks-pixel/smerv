@@ -4,7 +4,22 @@ import { ChartRenderer } from './chart-renderer.js';
 import { ChartDataManager } from './chart-data-manager.js';
 import { adjustGridLayout } from './lightweightchart.js';
 
-const socketHelper = new BinanceSocket();
+// Singleton pool for global cleanup of all listeners created by this module
+const TickerSelectCleanup = {
+  listeners: [],
+  add(el, event, handler, opts) {
+    el.addEventListener(event, handler, opts);
+    this.listeners.push({ el, event, handler, opts });
+  },
+  cleanup() {
+    this.listeners.forEach(({ el, event, handler, opts }) => {
+      try { el.removeEventListener(event, handler, opts); } catch {}
+    });
+    this.listeners = [];
+  }
+};
+
+const socketHelper = BinanceSocket;
 let allSymbols = [];
 
 // ----------------- FAVORITES -----------------
@@ -67,9 +82,10 @@ function enableTickerReplacement(card, chartInstance, dataManager, allCharts, ch
   const tfSelect = card.querySelector('.timeframe-select');
   if (!input || !tfSelect) return;
 
-  input.addEventListener('change', async () => {
+  const handler = async () => {
+    if (window.isGlobalError) return; // Disable if error banner is up
     const newSymbol = input.value.trim().toUpperCase();
-    if (!newSymbol || !newSymbol === chartInstance.symbol) return;
+    if (!newSymbol || newSymbol === chartInstance.symbol) return;
 
     const valid = await socketHelper.isValidSymbol(newSymbol);
     if (!valid) {
@@ -94,7 +110,9 @@ function enableTickerReplacement(card, chartInstance, dataManager, allCharts, ch
     if (allCharts.has(chartKey)) {
       allCharts.get(chartKey).symbol = newSymbol;
     }
-  });
+  };
+
+  TickerSelectCleanup.add(input, 'change', handler);
 }
 
 export async function setupTickerSelect(allCharts) {
@@ -124,8 +142,8 @@ export async function setupTickerSelect(allCharts) {
     suggestionBox.style.top = `${rect.bottom + window.scrollY}px`;
     suggestionBox.style.width = `${rect.width}px`;
   }
-  window.addEventListener('resize', positionSuggestions);
-  window.addEventListener('scroll', positionSuggestions, true);
+  TickerSelectCleanup.add(window, 'resize', positionSuggestions);
+  TickerSelectCleanup.add(window, 'scroll', positionSuggestions, true);
 
   const showSuggestions = debounce(() => {
     const query = input.value.trim().toUpperCase();
@@ -142,7 +160,7 @@ export async function setupTickerSelect(allCharts) {
       .map(s => `<div class="suggestion-item" style="padding:4px 8px;cursor:pointer;">${s}</div>`)
       .join('');
     Array.from(suggestionBox.querySelectorAll('.suggestion-item')).forEach(item => {
-      item.addEventListener('click', () => {
+      TickerSelectCleanup.add(item, 'click', () => {
         input.value = item.textContent;
         suggestionBox.style.display = 'none';
       });
@@ -151,15 +169,16 @@ export async function setupTickerSelect(allCharts) {
     suggestionBox.style.display = 'block';
   }, 150);
 
-  input.addEventListener('input', showSuggestions);
-  document.addEventListener('click', e => {
+  TickerSelectCleanup.add(input, 'input', showSuggestions);
+  TickerSelectCleanup.add(document, 'click', e => {
     if (e.target !== input && !suggestionBox.contains(e.target)) {
       suggestionBox.style.display = 'none';
     }
   });
 
   // ✅ Add Chart button
-  addBtn.addEventListener('click', async () => {
+  const addChartHandler = async () => {
+    if (window.isGlobalError) return; // Disable if error banner is up
     const symbol = input.value.trim().toUpperCase();
     if (!symbol) return;
     const valid = await socketHelper.isValidSymbol(symbol);
@@ -187,11 +206,20 @@ export async function setupTickerSelect(allCharts) {
         <span class="favorite-star" title="Add to favorites">★</span>
         <select class="timeframe-select">
           <option value="1m">1m</option>
+          <option value="3m">3m</option>
           <option value="5m" selected>5m</option>
           <option value="15m">15m</option>
+          <option value="30m">30m</option>
           <option value="1h">1h</option>
+          <option value="2h">2h</option>
           <option value="4h">4h</option>
+          <option value="6h">6h</option>
+          <option value="8h">8h</option>
+          <option value="12h">12h</option>
           <option value="1d">1d</option>
+          <option value="3d">3d</option>
+          <option value="1w">1w</option>
+          <option value="1M">1M</option>
         </select>
         <div class="right-controls">
           <button class="toggle-indicators" title="Indicators">📊</button>
@@ -252,7 +280,9 @@ export async function setupTickerSelect(allCharts) {
       console.error(`Failed to load ${symbol}:`, err);
     }
 
-    tfSelect.addEventListener('change', async () => {
+    // Timeframe change cleanup
+    const timeframeHandler = async () => {
+      if (window.isGlobalError) return; // Disable if error banner is up
       const newInterval = tfSelect.value;
       await dataManager.unsubscribe(symbol, chartInterval);
       chartInterval = newInterval;
@@ -262,15 +292,20 @@ export async function setupTickerSelect(allCharts) {
       } catch (err) {
         console.error(`Failed to switch interval for ${symbol}:`, err);
       }
-    });
+    };
+    TickerSelectCleanup.add(tfSelect, 'change', timeframeHandler);
 
+    // Remove button cleanup
     const removeBtn = card.querySelector('.remove-btn');
-    removeBtn?.addEventListener('click', () => {
+    const removeHandler = () => {
+      if (window.isGlobalError) return; // Disable if error banner is up
       dataManager.unsubscribe(symbol, chartInterval);
+      chartInstance.destroy();
       card.remove();
       allCharts.delete(uniqueId);
       adjustGridLayout();
-    });
+    };
+    TickerSelectCleanup.add(removeBtn, 'click', removeHandler);
 
     enableTickerReplacement(card, chartInstance, dataManager, allCharts, uniqueId);
 
@@ -296,14 +331,16 @@ export async function setupTickerSelect(allCharts) {
     if (favorites.includes(symbol)) {
       starEl.classList.add("favorited");
     }
-    starEl.addEventListener("click", () => toggleFavorite(symbol, starEl));
+    TickerSelectCleanup.add(starEl, "click", () => toggleFavorite(symbol, starEl));
 
     input.value = '';
     suggestionBox.style.display = 'none';
-  });
+  };
+  TickerSelectCleanup.add(addBtn, 'click', addChartHandler);
 
   // ✅ Favorites dropdown select
-  favSelect?.addEventListener("change", async e => {
+  const favSelectHandler = async e => {
+    if (window.isGlobalError) return; // Disable if error banner is up
     const symbol = e.target.value;
     if (symbol) {
       const card = document.querySelector(`.chart-card[data-symbol="${symbol.toLowerCase()}"]`);
@@ -317,7 +354,8 @@ export async function setupTickerSelect(allCharts) {
       }
       e.target.value = "";
     }
-  });
+  };
+  TickerSelectCleanup.add(favSelect, "change", favSelectHandler);
 
   refreshFavoritesMenu();
 
@@ -331,6 +369,12 @@ export async function setupTickerSelect(allCharts) {
     if (loadFavorites().includes(symbol)) {
       starEl.classList.add("favorited");
     }
-    starEl.addEventListener("click", () => toggleFavorite(symbol, starEl));
+    TickerSelectCleanup.add(starEl, "click", () => toggleFavorite(symbol, starEl));
   });
+
+  // Return a cleanup function for global shutdown
+  return () => {
+    TickerSelectCleanup.cleanup();
+    if (suggestionBox && suggestionBox.parentNode) suggestionBox.parentNode.removeChild(suggestionBox);
+  };
 }

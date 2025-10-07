@@ -1,10 +1,10 @@
-// lightweightchart.js - Complete rewrite with proper cleanup
+// lightweightchart.js - Crypto Chart Grid Main Controller
 import { ChartRenderer } from './chart-renderer.js';
 import { ChartDataManager } from './chart-data-manager.js';
 import { setupTickerSelect } from './ticker-select.js';
 import { enableDragDrop } from './drag-drop.js';
 
-// Multiple CDN sources for LightweightCharts
+// CDN sources for LightweightCharts
 const CDN_SOURCES = [
   'https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js',
   'https://cdn.jsdelivr.net/npm/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js',
@@ -36,9 +36,9 @@ class AppCleanupManager {
     const cleanup = async () => {
       if (this.isDestroying) return;
       this.isDestroying = true;
-      
+
       console.log('[AppCleanupManager] Performing global cleanup...');
-      
+
       try {
         for (const task of this.cleanupTasks) {
           try {
@@ -80,6 +80,37 @@ class AppCleanupManager {
 const cleanupManager = new AppCleanupManager();
 
 /**
+ * Global error handler for UI
+ */
+window.handleGlobalError = function(isError, err, ctx) {
+  window.isGlobalError = !!isError;
+  const banner = document.getElementById('global-error-banner');
+  if (banner) banner.style.display = isError ? '' : 'none';
+
+  // Update global status
+  const dot = document.querySelector('.dot-global');
+  const label = document.getElementById('label-global');
+  if (dot && label) {
+    dot.style.background = isError ? 'var(--danger)' : 'var(--ok)';
+    label.textContent = isError ? 'DISCONNECTED' : 'CONNECTED';
+  }
+
+  // Enable/disable all chart controls
+  document.querySelectorAll('.chart-card .right-controls button, .timeframe-select, .ticker-input')
+    .forEach(el => {
+      el.disabled = isError;
+      el.classList.toggle('disabled', isError);
+    });
+  // Optionally disable Add Chart button
+  const addBtn = document.getElementById('add-chart');
+  if (addBtn) addBtn.disabled = isError;
+
+  if (isError && err) {
+    console.error('[GlobalError]', err, ctx || '');
+  }
+};
+
+/**
  * Enhanced fullscreen functionality
  */
 function enableFullscreen(card, chartInstance) {
@@ -96,8 +127,8 @@ function enableFullscreen(card, chartInstance) {
   }
 
   const fullscreenHandler = () => {
-    if (isShuttingDown) return;
-    
+    if (isShuttingDown || window.isGlobalError) return;
+
     try {
       if (!document.fullscreenElement) {
         card.requestFullscreen?.();
@@ -111,14 +142,14 @@ function enableFullscreen(card, chartInstance) {
 
   const fullscreenChangeHandler = () => {
     if (isShuttingDown) return;
-    
+
     try {
       if (document.fullscreenElement === card) {
         btn.textContent = '🗗';
       } else {
         btn.textContent = '⛶';
       }
-      
+
       setTimeout(() => {
         if (!isShuttingDown && chartInstance?.chart) {
           try {
@@ -147,7 +178,7 @@ function enableFullscreen(card, chartInstance) {
       console.warn('[Fullscreen] Cleanup error:', error);
     }
   };
-  
+
   cleanupManager.addCleanupTask(cleanup);
   return cleanup;
 }
@@ -155,13 +186,13 @@ function enableFullscreen(card, chartInstance) {
 /**
  * Dynamic grid layout adjustment
  */
-function adjustGridLayout() {
+export function adjustGridLayout() {
   if (isShuttingDown) return;
-  
+
   try {
     const grid = document.getElementById('chart-grid');
     if (!grid) return;
-    
+
     const cards = Array.from(grid.querySelectorAll('.chart-card'));
     const chartCount = cards.length;
 
@@ -215,27 +246,30 @@ function loadScript(src) {
  */
 function cleanupChart(chartKey) {
   if (!allCharts.has(chartKey)) return;
-  
+
   try {
     const { chartInstance, dataManager, symbol } = allCharts.get(chartKey);
-    
+
     console.log(`[ChartCleanup] Cleaning up chart: ${symbol}`);
-    
-    const card = document.getElementById(chartKey.replace(/chart-/, '') + '-card') || 
-                 document.querySelector(`[data-symbol="${symbol.toLowerCase()}"]`);
+
+    const card =
+      document.getElementById(chartKey.replace(/chart-/, '') + '-card') ||
+      document.querySelector(`[data-symbol="${symbol.toLowerCase()}"]`);
     const tfSelect = card?.querySelector('.timeframe-select');
     const currentInterval = tfSelect?.value || '5m';
-    
+
+    // Unsubscribe data stream
     if (dataManager) {
       dataManager.unsubscribe(symbol, currentInterval).catch(error => {
         console.warn(`[ChartCleanup] Error unsubscribing ${symbol}:`, error);
       });
     }
-    
+
+    // Destroy chart instance (removes listeners, DOM refs, observers)
     if (chartInstance && typeof chartInstance.destroy === 'function') {
       chartInstance.destroy();
     }
-    
+
     allCharts.delete(chartKey);
     console.log(`[ChartCleanup] Successfully cleaned up chart: ${symbol}`);
   } catch (error) {
@@ -251,8 +285,8 @@ function setupRemoveButton(card, chartKey) {
   if (!removeBtn) return null;
 
   const removeHandler = () => {
-    if (isShuttingDown) return;
-    
+    if (isShuttingDown || window.isGlobalError) return;
+
     try {
       cleanupChart(chartKey);
       card.remove();
@@ -264,7 +298,7 @@ function setupRemoveButton(card, chartKey) {
   };
 
   removeBtn.addEventListener('click', removeHandler);
-  
+
   const cleanup = () => {
     try {
       removeBtn.removeEventListener('click', removeHandler);
@@ -272,7 +306,7 @@ function setupRemoveButton(card, chartKey) {
       console.warn('[RemoveButton] Cleanup error:', error);
     }
   };
-  
+
   cleanupManager.addCleanupTask(cleanup);
   return cleanup;
 }
@@ -287,18 +321,18 @@ function setupTimeframeHandler(card, chartInstance, dataManager, symbol) {
   let currentInterval = tfSelect.value;
 
   const changeHandler = async () => {
-    if (isShuttingDown) return;
-    
+    if (isShuttingDown || window.isGlobalError) return;
+
     try {
       const newInterval = tfSelect.value;
       if (newInterval === currentInterval) return;
-      
+
       console.log(`[TimeframeHandler] Changing ${symbol} from ${currentInterval} to ${newInterval}`);
-      
+
       await dataManager.unsubscribe(symbol, currentInterval);
       currentInterval = newInterval;
       await dataManager.loadAndStart(symbol, currentInterval, chartInstance);
-      
+
       console.log(`[TimeframeHandler] Successfully switched ${symbol} to ${newInterval}`);
     } catch (error) {
       console.error(`[TimeframeHandler] Failed to switch interval for ${symbol}:`, error);
@@ -315,7 +349,7 @@ function setupTimeframeHandler(card, chartInstance, dataManager, symbol) {
       console.warn('[TimeframeHandler] Cleanup error:', error);
     }
   };
-  
+
   cleanupManager.addCleanupTask(cleanup);
   return cleanup;
 }
@@ -325,7 +359,7 @@ function setupTimeframeHandler(card, chartInstance, dataManager, symbol) {
  */
 async function initializeCharts() {
   if (isShuttingDown) return;
-  
+
   statusLabel = document.getElementById('label-global');
   statusDot = document.querySelector('.dot-global');
   const grid = document.getElementById('chart-grid');
@@ -366,7 +400,7 @@ async function initializeCharts() {
 
     for (const config of chartConfigs) {
       if (isShuttingDown) break;
-      
+
       try {
         const dataManager = new ChartDataManager();
         const chartInstance = new ChartRenderer(config.id, config.symbol, dataManager);
@@ -393,7 +427,7 @@ async function initializeCharts() {
 
         const tfSelect = card.querySelector('.timeframe-select');
         const initialInterval = tfSelect?.value || '5m';
-        
+
         try {
           const candles = await dataManager.loadAndStart(config.symbol, initialInterval, chartInstance);
           console.log(`[InitCharts] ${config.symbol} loaded ${candles?.length || 0} candles`);
@@ -430,6 +464,7 @@ async function initializeCharts() {
     console.error('[InitCharts] Failed to initialize charts:', error);
     if (statusLabel) statusLabel.textContent = 'ERROR';
     if (statusDot) statusDot.style.background = 'var(--danger)';
+    window.handleGlobalError?.(true, error, 'LightweightCharts bootstrap failure');
   }
 }
 
@@ -439,10 +474,13 @@ async function initializeCharts() {
 async function startApplication() {
   try {
     isShuttingDown = false;
+    window.isGlobalError = false;
+    window.handleGlobalError?.(false);
+
     console.log('[App] Starting crypto charts application...');
-    
+
     await initializeCharts();
-    
+
     const tickerCleanup = await setupTickerSelect(allCharts, adjustGridLayout, enableFullscreen);
     if (tickerCleanup && typeof tickerCleanup === 'function') {
       cleanupManager.addCleanupTask(tickerCleanup);
@@ -451,21 +489,22 @@ async function startApplication() {
     console.log('[App] Application started successfully');
   } catch (error) {
     console.error('[App] Failed to start application:', error);
+    window.handleGlobalError?.(true, error, 'App startup failure');
   }
 }
 
 /**
  * Shutdown the application
  */
-async function shutdownApplication() {
+export async function shutdownApplication() {
   if (isShuttingDown) return;
-  
+
   console.log('[App] Shutting down application...');
   isShuttingDown = true;
 
   try {
     await cleanupManager.destroy();
-    
+
     const remainingCharts = Array.from(allCharts.keys());
     for (const chartKey of remainingCharts) {
       try {
@@ -474,7 +513,7 @@ async function shutdownApplication() {
         console.warn(`[Shutdown] Error cleaning chart ${chartKey}:`, error);
       }
     }
-    
+
     allCharts.clear();
     console.log('[App] Application shutdown complete');
   } catch (error) {
@@ -486,6 +525,3 @@ async function shutdownApplication() {
 document.addEventListener('DOMContentLoaded', startApplication);
 window.addEventListener('beforeunload', shutdownApplication);
 window.addEventListener('unload', shutdownApplication);
-
-// Export ONLY ONCE to avoid duplicate export errors
-export { adjustGridLayout, shutdownApplication };

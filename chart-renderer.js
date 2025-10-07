@@ -1,10 +1,19 @@
+// chart-renderer.js
 import { RSIIndicator } from './rsi-indicator.js';
 import { EMAIndicator } from './ema-indicator.js';
 import { MACDIndicator } from './macd-indicator.js';
 import { SuperGuppyIndicator } from './superguppy-indicator.js';
 import { IndicatorPanelManager } from './indicator-panel-utils.js';
+import { DrawingToolsManager } from './chart-drawing-tools.js'; // ✅ ADD THIS
 
 const INDICATOR_PANELS = ['rsi', 'macd'];
+
+// Utility functions for custom indicators (safe subset):
+const customUtils = {
+  addLineSeries: (chart, opts) => chart.addLineSeries(opts),
+  addHistogramSeries: (chart, opts) => chart.addHistogramSeries(opts),
+  // Add more helpers as needed
+};
 
 function debounce(fn, delay = 150) {
   let timer = null;
@@ -23,6 +32,8 @@ export class ChartRenderer {
     this.candleSeries = null;
     this.volumeSeries = null;
     this.indicators = [];
+    this.customIndicators = []; // [{ name, logic, instance }]
+    this.drawingTools = null; // ✅ ADD THIS
     this.lastClosePrice = null;
     this.resizeObserver = null;
     this.mutationObserver = null;
@@ -30,6 +41,8 @@ export class ChartRenderer {
     this.isDestroyed = false;
     this.isReady = false;
     this.errored = false;
+    this.timers = [];
+    this.intervals = [];
 
     this.container = document.getElementById(containerId);
     if (!this.container) {
@@ -54,6 +67,10 @@ export class ChartRenderer {
       if (chartContainer && this.chart) {
         this.chart.resize(chartContainer.clientWidth, chartContainer.clientHeight);
       }
+      // ✅ Redraw drawings on resize
+      if (this.drawingTools && typeof this.drawingTools.redraw === 'function') {
+        this.drawingTools.redraw();
+      }
     }, 150);
 
     this._fullscreenChangeHandler = () => {
@@ -62,6 +79,62 @@ export class ChartRenderer {
     };
 
     if (card) card.chartRenderer = this;
+
+    this.setupCustomIndicatorUI();
+  }
+
+  setupCustomIndicatorUI() {
+    // Find custom indicator button
+    if (!this.card) return;
+    const customBtn = this.card.querySelector('.custom-indicator-btn');
+    if (!customBtn) return;
+
+    customBtn.addEventListener('click', () => {
+      const modal = document.getElementById('custom-indicator-modal');
+      if (!modal) return;
+      modal.style.display = '';
+      modal.dataset.chartCard = this.card.id;
+      // Clear previous content
+      const textarea = document.getElementById('custom-indicator-js-input');
+      if (textarea) textarea.value = '';
+      const fileInput = document.getElementById('custom-indicator-js-upload');
+      if (fileInput) fileInput.value = '';
+      modal.dataset.chartRendererId = this.containerId;
+    });
+
+    // Modal actions (global, but only affect correct chart)
+    const modal = document.getElementById('custom-indicator-modal');
+    if (modal && !modal.dataset.listeners) {
+      modal.dataset.listeners = true;
+      // Save button
+      document.getElementById('custom-indicator-save').onclick = () => {
+        const code = document.getElementById('custom-indicator-js-input').value;
+        if (!code.trim()) return alert('Paste JS logic for your indicator.');
+        const chartRendererId = modal.dataset.chartRendererId;
+        const renderer = chartRendererId ? window.chartRendererMap?.[chartRendererId] : null;
+        if (renderer) {
+          renderer.addCustomIndicator(code, 'customIndicator');
+        }
+        modal.style.display = 'none';
+      };
+      // Cancel button
+      document.getElementById('custom-indicator-cancel').onclick = () => {
+        modal.style.display = 'none';
+      };
+      // File upload
+      document.getElementById('custom-indicator-js-upload').onchange = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = ev => {
+          document.getElementById('custom-indicator-js-input').value = ev.target.result;
+        };
+        reader.readAsText(file);
+      };
+    }
+    // Save reference for cross-component access
+    if (!window.chartRendererMap) window.chartRendererMap = {};
+    window.chartRendererMap[this.containerId] = this;
   }
 
   tryInitIfReady() {
@@ -83,6 +156,11 @@ export class ChartRenderer {
         crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
         rightPriceScale: { borderColor: '#485c7b' },
         timeScale: { borderColor: '#485c7b', timeVisible: true }
+      });
+
+      // Force background color in case defaults are not respected (defensive)
+      this.chart.applyOptions({
+        layout: { background: { color: '#11161d' }, textColor: '#e6edf3' }
       });
 
       this.candleSeries = this.chart.addCandlestickSeries({
@@ -108,12 +186,27 @@ export class ChartRenderer {
         chartWrap.appendChild(badgeContainer);
       }
 
-      setTimeout(() => {
+      // ✅ INITIALIZE DRAWING TOOLS
+      if (chartWrap && !this.drawingTools) {
+        const chartKey = `${this.symbol}-${this.containerId}`;
+        try {
+          this.drawingTools = new DrawingToolsManager(
+            this.chart,
+            chartWrap,
+            chartKey
+          );
+          console.log(`[ChartRenderer] Drawing tools initialized for ${this.symbol}`);
+        } catch (error) {
+          console.error(`[ChartRenderer] Failed to initialize drawing tools:`, error);
+        }
+      }
+
+      this.timers.push(setTimeout(() => {
         if (!this.isDestroyed && this.container) {
           const rect = this.container.getBoundingClientRect();
           this.chart?.resize(rect.width, rect.height);
         }
-      }, 0);
+      }, 0));
 
       this.setupResizeObserver();
       this.setupPanelMutationObserver();
@@ -149,6 +242,16 @@ export class ChartRenderer {
               if (panelEl) i.instance.resize(panelEl.clientWidth, panelEl.clientHeight);
             }
           });
+          // Custom indicators: allow resizing if they provide a resize method
+          this.customIndicators.forEach(ind => {
+            if (ind.instance && typeof ind.instance.resize === 'function') {
+              ind.instance.resize(rect.width, rect.height);
+            }
+          });
+          // ✅ Redraw drawings on resize
+          if (this.drawingTools && typeof this.drawingTools.redraw === 'function') {
+            this.drawingTools.redraw();
+          }
         } catch (error) {
           console.warn(`[ChartRenderer] Resize observer error for ${this.symbol}:`, error);
         }
@@ -169,11 +272,11 @@ export class ChartRenderer {
         ) {
           const panel = mutation.target;
           if (panel.classList.contains('active')) {
-            setTimeout(() => {
+            this.timers.push(setTimeout(() => {
               this.debouncedResizeChart();
               panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
               panel.focus?.();
-            }, 100);
+            }, 100));
           }
         }
       }
@@ -199,6 +302,52 @@ export class ChartRenderer {
   setupCardControls() {
     if (!this.card || this.isDestroyed || this.errored) return;
 
+    // Disable controls if global error
+    if (window.isGlobalError) {
+      this.card.querySelectorAll('.right-controls button, .timeframe-select, .ticker-input')
+        .forEach(el => {
+          el.disabled = true;
+          el.classList.add('disabled');
+        });
+    }
+
+    // ✅ DRAWING TOOLS TOGGLE
+    const drawingBtn = this.card.querySelector('.drawing-tools-btn');
+    if (drawingBtn) {
+      drawingBtn.setAttribute('aria-label', 'Toggle drawing tools');
+      drawingBtn.setAttribute('tabindex', '0');
+      drawingBtn.setAttribute('role', 'button');
+      drawingBtn.setAttribute('title', 'Enable/disable drawing tools');
+      
+      const drawingHandler = () => {
+        if (this.isDestroyed || this.errored || window.isGlobalError) return;
+        
+        if (this.drawingTools) {
+          const toolbar = this.card.querySelector('.drawing-toolbar');
+          if (toolbar) {
+            const isVisible = toolbar.style.display !== 'none';
+            toolbar.style.display = isVisible ? 'none' : 'flex';
+            drawingBtn.style.background = isVisible ? 'transparent' : 'var(--accent)';
+            drawingBtn.style.color = isVisible ? 'var(--text)' : '#fff';
+            
+            // Enable/disable pointer events on overlay
+            const overlay = this.card.querySelector('svg');
+            if (overlay) {
+              overlay.style.pointerEvents = isVisible ? 'none' : 'auto';
+            }
+          }
+        }
+      };
+      
+      this.addEventListener(drawingBtn, 'click', drawingHandler);
+      this.addEventListener(drawingBtn, 'keydown', (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          drawingHandler();
+        }
+      });
+    }
+
     // Fullscreen toggle
     const fullscreenBtn = this.card.querySelector('.fullscreen-btn');
     if (fullscreenBtn) {
@@ -207,7 +356,7 @@ export class ChartRenderer {
       fullscreenBtn.setAttribute('role', 'button');
       fullscreenBtn.setAttribute('title', 'Toggle fullscreen mode');
       const fullscreenHandler = () => {
-        if (this.isDestroyed || this.errored) return;
+        if (this.isDestroyed || this.errored || window.isGlobalError) return;
         this.card.classList.toggle('fullscreen');
         this.debouncedResizeChart();
       };
@@ -229,13 +378,13 @@ export class ChartRenderer {
       indicatorsPanel.setAttribute('role', 'region');
       indicatorsPanel.setAttribute('aria-label', 'Indicators panel');
       const toggleHandler = () => {
-        if (this.isDestroyed || this.errored) return;
+        if (this.isDestroyed || this.errored || window.isGlobalError) return;
         indicatorsPanel.classList.toggle('active');
         if (indicatorsPanel.classList.contains('active')) {
-          setTimeout(() => {
+          this.timers.push(setTimeout(() => {
             indicatorsPanel.focus();
             indicatorsPanel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-          }, 100);
+          }, 100));
         }
       };
       this.addEventListener(toggleBtn, 'click', toggleHandler);
@@ -253,7 +402,7 @@ export class ChartRenderer {
         const uniqueId = this.card.id.replace('-card', '');
         const chartId = `${type}-chart-${uniqueId}`;
         const handler = (e) => {
-          if (this.isDestroyed || this.errored) return;
+          if (this.isDestroyed || this.errored || window.isGlobalError) return;
           try {
             if (e.target.checked) {
               this.addIndicator(type, chartId);
@@ -278,7 +427,7 @@ export class ChartRenderer {
       emaCheckbox.setAttribute('aria-label', 'Toggle EMA indicators');
       emaCheckbox.setAttribute('tabindex', '0');
       const emaHandler = (e) => {
-        if (this.isDestroyed || this.errored) return;
+        if (this.isDestroyed || this.errored || window.isGlobalError) return;
         try {
           if (e.target.checked) {
             if (emaSettings) emaSettings.style.display = 'flex';
@@ -303,7 +452,7 @@ export class ChartRenderer {
       volumeCheckbox.setAttribute('aria-label', 'Toggle Volume indicator');
       volumeCheckbox.setAttribute('tabindex', '0');
       const volumeHandler = (e) => {
-        if (this.isDestroyed || this.errored) return;
+        if (this.isDestroyed || this.errored || window.isGlobalError) return;
         try {
           if (e.target.checked) {
             this.addIndicator('volume');
@@ -326,7 +475,7 @@ export class ChartRenderer {
       superguppyCheckbox.setAttribute('aria-label', 'Toggle Super Guppy indicator');
       superguppyCheckbox.setAttribute('tabindex', '0');
       const superguppyHandler = (e) => {
-        if (this.isDestroyed || this.errored) return;
+        if (this.isDestroyed || this.errored || window.isGlobalError) return;
         try {
           if (e.target.checked) {
             this.addIndicator('superguppy');
@@ -438,12 +587,23 @@ export class ChartRenderer {
         this.lastClosePrice = candles[candles.length - 1].close;
         this.updatePriceDisplay(this.lastClosePrice);
       }
+      // Built-in indicators
       this.indicators.forEach((i) => {
         if (this.isDestroyed || this.errored) return;
         try {
           i.instance?.update(candles);
         } catch (error) {
           console.warn(`[ChartRenderer] Error updating indicator ${i.type}:`, error);
+        }
+      });
+      // Custom indicators
+      this.customIndicators.forEach(ind => {
+        try {
+          if (typeof ind.logic === 'function') {
+            ind.instance = ind.logic(candles, this.chart, customUtils);
+          }
+        } catch (err) {
+          console.warn('[ChartRenderer] Custom indicator error:', err);
         }
       });
     } catch (error) {
@@ -473,6 +633,16 @@ export class ChartRenderer {
             console.warn(`[ChartRenderer] Error updating indicator on closed candle:`, error);
           }
         });
+        // Custom indicators
+        this.customIndicators.forEach(ind => {
+          try {
+            if (typeof ind.logic === 'function') {
+              ind.instance = ind.logic(history, this.chart, customUtils);
+            }
+          } catch (err) {
+            console.warn('[ChartRenderer] Custom indicator error:', err);
+          }
+        });
       }
       this.updatePriceDisplay(update.close);
     } catch (error) {
@@ -495,7 +665,7 @@ export class ChartRenderer {
   }
 
   addIndicator(type, optionsOrContainerId) {
-    if (this.isDestroyed || this.errored || !this.isReady) return;
+    if (this.isDestroyed || this.errored || !this.isReady || window.isGlobalError) return;
     try {
       if (INDICATOR_PANELS.includes(type) && !this.indicators.find((i) => i.type === type)) {
         this.panelManagers[type].show();
@@ -571,7 +741,7 @@ export class ChartRenderer {
   }
 
   updateIndicator(type, options) {
-    if (this.isDestroyed || this.errored || !this.isReady) return;
+    if (this.isDestroyed || this.errored || !this.isReady || window.isGlobalError) return;
     try {
       if (type === 'ema') {
         this.addIndicator('ema', options);
@@ -582,7 +752,7 @@ export class ChartRenderer {
   }
 
   removeIndicator(type, containerId) {
-    if (this.isDestroyed || this.errored || !this.isReady) return;
+    if (this.isDestroyed || this.errored || !this.isReady || window.isGlobalError) return;
     try {
       if (INDICATOR_PANELS.includes(type)) {
         const idx = this.indicators.findIndex((i) => i.type === type);
@@ -630,7 +800,35 @@ export class ChartRenderer {
     }
   }
 
+  addCustomIndicator(codeString, name = 'customIndicator') {
+    // Remove previous with same name
+    this.customIndicators = this.customIndicators.filter(ind => ind.name !== name);
+    let logicFn;
+    try {
+      // Wrap code in a function if it's not just a function declaration
+      if (/function\s+customIndicator/.test(codeString)) {
+        logicFn = eval(`(${codeString})`);
+      } else {
+        logicFn = new Function('candles', 'chart', 'utils', codeString);
+      }
+      // Test logic (do not crash UI)
+      if (typeof logicFn !== 'function') throw new Error('Invalid function');
+      // Save for later updates
+      this.customIndicators.push({ name, logic: logicFn, instance: null });
+      // Run initial logic
+      if (this.dataManager) {
+        const key = `${this.symbol}-${this.card?.querySelector('.timeframe-select')?.value || '5m'}`;
+        const history = this.dataManager.historicalData.get(key) || [];
+        logicFn(history, this.chart, customUtils);
+      }
+      alert('Custom indicator added!');
+    } catch (err) {
+      alert('Failed to add custom indicator: ' + err);
+    }
+  }
+
   destroy() {
+    // Prevent double destroy
     if (this.isDestroyed) {
       console.warn(`[ChartRenderer] Already destroyed: ${this.symbol}`);
       return;
@@ -639,22 +837,18 @@ export class ChartRenderer {
     this.isReady = false;
     this.errored = false;
     try {
-      if (this.resizeObserver) {
-        this.resizeObserver.disconnect();
-        this.resizeObserver = null;
-      }
-      if (this.mutationObserver) {
-        this.mutationObserver.disconnect();
-        this.mutationObserver = null;
-      }
-      if (this.chart && this._crosshairHandler) {
+      // ✅ DESTROY DRAWING TOOLS FIRST
+      if (this.drawingTools && typeof this.drawingTools.destroy === 'function') {
         try {
-          this.chart.unsubscribeCrosshairMove(this._crosshairHandler);
+          this.drawingTools.destroy();
+          this.drawingTools = null;
+          console.log(`[ChartRenderer] Drawing tools destroyed for ${this.symbol}`);
         } catch (error) {
-          console.warn(`[ChartRenderer] Error unsubscribing crosshair:`, error);
+          console.warn(`[ChartRenderer] Error destroying drawing tools:`, error);
         }
-        this._crosshairHandler = null;
       }
+
+      // Remove event listeners
       this.eventListeners.forEach(({ element, eventType, handler, options }) => {
         try {
           if (element && typeof element.removeEventListener === 'function') {
@@ -665,6 +859,34 @@ export class ChartRenderer {
         }
       });
       this.eventListeners = [];
+
+      // Disconnect observers
+      if (this.resizeObserver) {
+        this.resizeObserver.disconnect();
+        this.resizeObserver = null;
+      }
+      if (this.mutationObserver) {
+        this.mutationObserver.disconnect();
+        this.mutationObserver = null;
+      }
+
+      // Remove timers and intervals
+      this.timers.forEach(t => clearTimeout(t));
+      this.timers = [];
+      this.intervals.forEach(i => clearInterval(i));
+      this.intervals = [];
+
+      // Unsubscribe crosshair move
+      if (this.chart && this._crosshairHandler) {
+        try {
+          this.chart.unsubscribeCrosshairMove(this._crosshairHandler);
+        } catch (error) {
+          console.warn(`[ChartRenderer] Error unsubscribing crosshair:`, error);
+        }
+        this._crosshairHandler = null;
+      }
+
+      // Destroy indicators
       this.indicators.forEach((indicator) => {
         try {
           if (indicator.instance) {
@@ -679,6 +901,8 @@ export class ChartRenderer {
         }
       });
       this.indicators = [];
+
+      // Remove chart series and chart
       if (this.chart) {
         try {
           if (this.candleSeries) {
@@ -699,8 +923,15 @@ export class ChartRenderer {
         }
         this.chart = null;
       }
-      Object.values(this.panelManagers).forEach((pm) => pm.cleanup());
+
+      // Panel managers cleanup
+      Object.values(this.panelManagers).forEach((pm) => {
+        try { pm.cleanup(); } catch (err) {}
+      });
+
       document.removeEventListener('fullscreenchange', this._fullscreenChangeHandler);
+
+      // Null DOM references
       if (this.card && this.card.chartRenderer === this) {
         this.card.chartRenderer = null;
       }
@@ -710,6 +941,16 @@ export class ChartRenderer {
       this.cardStatusLabel = null;
       this.dataManager = null;
       this.lastClosePrice = null;
+
+      // Clean up custom indicators
+      if (this.customIndicators && this.customIndicators.length) {
+        this.customIndicators.forEach(ind => {
+          if (ind.instance && typeof ind.instance.remove === 'function') {
+            try { ind.instance.remove(); } catch (err) {}
+          }
+        });
+        this.customIndicators = [];
+      }
     } catch (error) {
       console.error(`[ChartRenderer] Error during destruction of ${this.symbol}:`, error);
     }
