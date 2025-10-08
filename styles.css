@@ -745,3 +745,40 @@ main {
   background: #23272e;
   color: var(--accent);
 }
+
+/* ✅ Drawing Tools Button Active State - Theme Aware */
+.drawing-tools-btn.active {
+  background: var(--accent) !important;
+  color: #fff !important;
+}
+
+/* ✅ Drawing Toolbar Styles - Theme Aware */
+.drawing-toolbar {
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  transition: opacity 0.2s ease, background 0.2s ease, border 0.2s ease;
+}
+
+/* ✅ Theme-aware button hover */
+.drawing-toolbar button:hover {
+  transform: scale(1.1);
+}
+
+:root[data-theme="dark"] .drawing-toolbar button:hover {
+  background: rgba(33, 118, 255, 0.2) !important;
+}
+
+:root[data-theme="light"] .drawing-toolbar button:hover {
+  background: rgba(33, 118, 255, 0.15) !important;
+}
+
+/* ✅ Mobile Drawing Toolbar */
+@media (max-width: 900px) {
+  .drawing-toolbar {
+    top: 50px !important;
+    right: 4px !important;
+    flex-wrap: wrap;
+    max-width: 200px;
+  }
+}

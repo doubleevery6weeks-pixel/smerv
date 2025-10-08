@@ -1,10 +1,13 @@
-// lightweightchart.js - Crypto Chart Grid Main Controller
+// lightweightchart.js - Crypto Chart Grid Main Controller (Complete with Alert System)
 import { ChartRenderer } from './chart-renderer.js';
 import { ChartDataManager } from './chart-data-manager.js';
 import { setupTickerSelect } from './ticker-select.js';
 import { enableDragDrop } from './drag-drop.js';
+import { setupAlertUI } from './alert-ui.js';
+import AlertSystem from './alert-system.js';
 
-// CDN sources for LightweightCharts
+// ==================== CONSTANTS ====================
+
 const CDN_SOURCES = [
   'https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js',
   'https://cdn.jsdelivr.net/npm/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js',
@@ -18,76 +21,141 @@ const chartConfigs = [
   { id: 'chart-bnb', symbol: 'BNBUSDT', cardId: 'bnb-card' }
 ];
 
-const allCharts = new Map();
-let statusLabel, statusDot;
-let isShuttingDown = false;
+const SCRIPT_LOAD_TIMEOUT = 10000;
+const CHART_RESIZE_DEBOUNCE = 200;
 
-/**
- * Application cleanup management system
- */
+// ==================== STATE MANAGEMENT ====================
+
+const appState = {
+  charts: new Map(),
+  isShuttingDown: false,
+  isInitialized: false,
+  abortController: null,
+  statusLabel: null,
+  statusDot: null
+};
+
+// ==================== STORAGE UTILITIES ====================
+
+const storage = {
+  get(key, defaultValue = null) {
+    try {
+      const value = localStorage.getItem(key);
+      return value ? JSON.parse(value) : defaultValue;
+    } catch (error) {
+      console.warn(`[Storage] Failed to get ${key}:`, error);
+      return defaultValue;
+    }
+  },
+  
+  set(key, value) {
+    try {
+      localStorage.setItem(key, JSON.stringify(value));
+      return true;
+    } catch (error) {
+      console.warn(`[Storage] Failed to set ${key}:`, error);
+      return false;
+    }
+  },
+  
+  remove(key) {
+    try {
+      localStorage.removeItem(key);
+      return true;
+    } catch (error) {
+      console.warn(`[Storage] Failed to remove ${key}:`, error);
+      return false;
+    }
+  }
+};
+
+// ==================== CLEANUP MANAGEMENT ====================
+
 class AppCleanupManager {
   constructor() {
-    this.cleanupTasks = [];
+    this.cleanupTasks = new Set();
     this.isDestroying = false;
-    this.setupGlobalCleanup();
+    this.hasSetupCleanup = false;
   }
 
   setupGlobalCleanup() {
+    if (this.hasSetupCleanup) return;
+    this.hasSetupCleanup = true;
+
     const cleanup = async () => {
       if (this.isDestroying) return;
-      this.isDestroying = true;
-
-      console.log('[AppCleanupManager] Performing global cleanup...');
-
-      try {
-        for (const task of this.cleanupTasks) {
-          try {
-            await task();
-          } catch (error) {
-            console.warn('[AppCleanupManager] Cleanup task failed:', error);
-          }
-        }
-        console.log('[AppCleanupManager] Global cleanup completed');
-      } catch (error) {
-        console.error('[AppCleanupManager] Global cleanup error:', error);
-      }
+      await this.destroy();
     };
 
-    window.addEventListener('beforeunload', cleanup);
-    window.addEventListener('unload', cleanup);
-    window.addEventListener('pagehide', cleanup);
-
-    document.addEventListener('visibilitychange', () => {
+    // Single beforeunload handler to prevent duplicate cleanup
+    window.addEventListener('beforeunload', cleanup, { once: true });
+    
+    // Monitor visibility changes (informational only, no cleanup)
+    const visibilityHandler = () => {
       if (document.visibilityState === 'hidden') {
         console.log('[AppCleanupManager] Page hidden, maintaining connections');
       }
-    });
-
-    this._globalCleanup = cleanup;
+    };
+    
+    document.addEventListener('visibilitychange', visibilityHandler);
+    
+    // Store reference for potential manual cleanup
+    this._visibilityHandler = visibilityHandler;
   }
 
   addCleanupTask(task) {
     if (typeof task === 'function') {
-      this.cleanupTasks.push(task);
+      this.cleanupTasks.add(task);
     }
   }
 
+  removeCleanupTask(task) {
+    this.cleanupTasks.delete(task);
+  }
+
   async destroy() {
-    await this._globalCleanup();
+    if (this.isDestroying) return;
+    this.isDestroying = true;
+
+    console.log('[AppCleanupManager] Performing global cleanup...');
+
+    const tasks = Array.from(this.cleanupTasks);
+    const results = await Promise.allSettled(
+      tasks.map(task => {
+        try {
+          return Promise.resolve(task());
+        } catch (error) {
+          console.warn('[AppCleanupManager] Cleanup task failed:', error);
+          return Promise.resolve();
+        }
+      })
+    );
+
+    const failed = results.filter(r => r.status === 'rejected');
+    if (failed.length > 0) {
+      console.warn(`[AppCleanupManager] ${failed.length} cleanup tasks failed`);
+    }
+
+    // Remove visibility handler
+    if (this._visibilityHandler) {
+      document.removeEventListener('visibilitychange', this._visibilityHandler);
+    }
+
+    this.cleanupTasks.clear();
+    console.log('[AppCleanupManager] Global cleanup completed');
   }
 }
 
 const cleanupManager = new AppCleanupManager();
 
-/**
- * Global error handler for UI
- */
+// ==================== GLOBAL ERROR HANDLER ====================
+
 window.handleGlobalError = function(isError, err, ctx) {
   window.isGlobalError = !!isError;
+  
   const banner = document.getElementById('global-error-banner');
   if (banner) banner.style.display = isError ? '' : 'none';
 
-  // Update global status
   const dot = document.querySelector('.dot-global');
   const label = document.getElementById('label-global');
   if (dot && label) {
@@ -95,24 +163,27 @@ window.handleGlobalError = function(isError, err, ctx) {
     label.textContent = isError ? 'DISCONNECTED' : 'CONNECTED';
   }
 
-  // Enable/disable all chart controls
-  document.querySelectorAll('.chart-card .right-controls button, .timeframe-select, .ticker-input')
-    .forEach(el => {
+  // Batch DOM updates for better performance
+  requestAnimationFrame(() => {
+    const controls = document.querySelectorAll(
+      '.chart-card .right-controls button, .timeframe-select, .ticker-input'
+    );
+    controls.forEach(el => {
       el.disabled = isError;
       el.classList.toggle('disabled', isError);
     });
-  // Optionally disable Add Chart button
-  const addBtn = document.getElementById('add-chart');
-  if (addBtn) addBtn.disabled = isError;
+    
+    const addBtn = document.getElementById('add-chart');
+    if (addBtn) addBtn.disabled = isError;
+  });
 
   if (isError && err) {
     console.error('[GlobalError]', err, ctx || '');
   }
 };
 
-/**
- * Enhanced fullscreen functionality
- */
+// ==================== FULLSCREEN FUNCTIONALITY ====================
+
 function enableFullscreen(card, chartInstance) {
   const header = card.querySelector('.chart-header');
   if (!header) return null;
@@ -126,8 +197,11 @@ function enableFullscreen(card, chartInstance) {
     header.appendChild(btn);
   }
 
+  const abortController = new AbortController();
+  const signal = abortController.signal;
+
   const fullscreenHandler = () => {
-    if (isShuttingDown || window.isGlobalError) return;
+    if (appState.isShuttingDown || window.isGlobalError) return;
 
     try {
       if (!document.fullscreenElement) {
@@ -141,53 +215,42 @@ function enableFullscreen(card, chartInstance) {
   };
 
   const fullscreenChangeHandler = () => {
-    if (isShuttingDown) return;
+    if (appState.isShuttingDown) return;
 
     try {
-      if (document.fullscreenElement === card) {
-        btn.textContent = '🗗';
-      } else {
-        btn.textContent = '⛶';
-      }
+      btn.textContent = document.fullscreenElement === card ? '🗗' : '⛶';
 
+      // Debounced chart resize
       setTimeout(() => {
-        if (!isShuttingDown && chartInstance?.chart) {
-          try {
-            const container = card.querySelector('.tvchart');
-            if (container) {
-              chartInstance.chart.resize(container.clientWidth, container.clientHeight);
-            }
-          } catch (error) {
-            console.warn('[Fullscreen] Error resizing chart:', error);
+        if (!appState.isShuttingDown && chartInstance?.chart) {
+          const container = card.querySelector('.tvchart');
+          if (container) {
+            chartInstance.chart.resize(container.clientWidth, container.clientHeight);
           }
         }
-      }, 200);
+      }, CHART_RESIZE_DEBOUNCE);
     } catch (error) {
       console.warn('[Fullscreen] Error in fullscreen change handler:', error);
     }
   };
 
-  btn.addEventListener('click', fullscreenHandler);
-  document.addEventListener('fullscreenchange', fullscreenChangeHandler);
+  btn.addEventListener('click', fullscreenHandler, { signal });
+  document.addEventListener('fullscreenchange', fullscreenChangeHandler, { signal });
 
   const cleanup = () => {
-    try {
-      btn.removeEventListener('click', fullscreenHandler);
-      document.removeEventListener('fullscreenchange', fullscreenChangeHandler);
-    } catch (error) {
-      console.warn('[Fullscreen] Cleanup error:', error);
-    }
+    abortController.abort();
   };
 
   cleanupManager.addCleanupTask(cleanup);
   return cleanup;
 }
 
-/**
- * Dynamic grid layout adjustment
- */
+// ==================== GRID LAYOUT ====================
+
+let lastGridState = null;
+
 export function adjustGridLayout() {
-  if (isShuttingDown) return;
+  if (appState.isShuttingDown) return;
 
   try {
     const grid = document.getElementById('chart-grid');
@@ -196,96 +259,130 @@ export function adjustGridLayout() {
     const cards = Array.from(grid.querySelectorAll('.chart-card'));
     const chartCount = cards.length;
 
-    grid.style.gridTemplateColumns = '';
-    grid.style.gridAutoRows = '';
-    cards.forEach(card => {
-      card.style.gridColumn = '';
-      card.style.gridRow = '';
-    });
+    // Cache check - avoid unnecessary recalculations
+    const currentState = `${chartCount}-${cards.map(c => c.id).join(',')}`;
+    if (lastGridState === currentState) return;
+    lastGridState = currentState;
 
-    if (chartCount === 1) {
-      grid.style.gridTemplateColumns = '1fr';
-    } else if (chartCount === 2) {
-      grid.style.gridTemplateColumns = 'repeat(2, 1fr)';
-    } else if (chartCount === 3) {
-      grid.style.gridTemplateColumns = '1fr 1fr';
-      grid.style.gridAutoRows = '1fr';
-      if (cards[0]) { cards[0].style.gridColumn = '1'; cards[0].style.gridRow = '1'; }
-      if (cards[1]) { cards[1].style.gridColumn = '1'; cards[1].style.gridRow = '2'; }
-      if (cards[2]) { cards[2].style.gridColumn = '2'; cards[2].style.gridRow = '1 / span 2'; }
-    } else if (chartCount === 4) {
-      grid.style.gridTemplateColumns = 'repeat(2, 1fr)';
-    } else if (chartCount === 5) {
-      grid.style.gridTemplateColumns = 'repeat(2, 1fr)';
-      if (cards[4]) cards[4].style.gridColumn = '1 / -1';
-    } else if (chartCount === 6) {
-      grid.style.gridTemplateColumns = 'repeat(3, 1fr)';
-    } else if (chartCount >= 7) {
-      grid.style.gridTemplateColumns = 'repeat(3, 1fr)';
-    }
+    // Batch DOM updates for better performance
+    requestAnimationFrame(() => {
+      // Reset all styles
+      grid.style.gridTemplateColumns = '';
+      grid.style.gridAutoRows = '';
+      cards.forEach(card => {
+        card.style.gridColumn = '';
+        card.style.gridRow = '';
+      });
+
+      // Apply layout based on chart count
+      switch (chartCount) {
+        case 1:
+          grid.style.gridTemplateColumns = '1fr';
+          break;
+        case 2:
+          grid.style.gridTemplateColumns = 'repeat(2, 1fr)';
+          break;
+        case 3:
+          grid.style.gridTemplateColumns = '1fr 1fr';
+          grid.style.gridAutoRows = '1fr';
+          if (cards[0]) { cards[0].style.gridColumn = '1'; cards[0].style.gridRow = '1'; }
+          if (cards[1]) { cards[1].style.gridColumn = '1'; cards[1].style.gridRow = '2'; }
+          if (cards[2]) { cards[2].style.gridColumn = '2'; cards[2].style.gridRow = '1 / span 2'; }
+          break;
+        case 4:
+          grid.style.gridTemplateColumns = 'repeat(2, 1fr)';
+          break;
+        case 5:
+          grid.style.gridTemplateColumns = 'repeat(2, 1fr)';
+          if (cards[4]) cards[4].style.gridColumn = '1 / -1';
+          break;
+        case 6:
+          grid.style.gridTemplateColumns = 'repeat(3, 1fr)';
+          break;
+        default:
+          if (chartCount >= 7) {
+            grid.style.gridTemplateColumns = 'repeat(3, 1fr)';
+          }
+      }
+    });
   } catch (error) {
     console.warn('[GridLayout] Error adjusting layout:', error);
   }
 }
 
-/**
- * Load external script with fallback
- */
-function loadScript(src) {
+// ==================== SCRIPT LOADING ====================
+
+function loadScript(src, timeout = SCRIPT_LOAD_TIMEOUT) {
   return new Promise((resolve, reject) => {
     const script = document.createElement('script');
+    const timer = setTimeout(() => {
+      reject(new Error(`Script load timeout: ${src}`));
+    }, timeout);
+
     script.src = src;
-    script.onload = resolve;
-    script.onerror = reject;
+    script.onload = () => {
+      clearTimeout(timer);
+      resolve();
+    };
+    script.onerror = () => {
+      clearTimeout(timer);
+      reject(new Error(`Failed to load script: ${src}`));
+    };
+    
     document.head.appendChild(script);
   });
 }
 
-/**
- * Clean up individual chart resources
- */
+// ==================== CHART CLEANUP ====================
+
 function cleanupChart(chartKey) {
-  if (!allCharts.has(chartKey)) return;
+  if (!appState.charts.has(chartKey)) return;
 
   try {
-    const { chartInstance, dataManager, symbol } = allCharts.get(chartKey);
+    const { chartInstance, dataManager, symbol, cleanup } = appState.charts.get(chartKey);
 
     console.log(`[ChartCleanup] Cleaning up chart: ${symbol}`);
 
-    const card =
-      document.getElementById(chartKey.replace(/chart-/, '') + '-card') ||
-      document.querySelector(`[data-symbol="${symbol.toLowerCase()}"]`);
+    const card = document.getElementById(chartKey.replace(/chart-/, '') + '-card') ||
+                 document.querySelector(`[data-symbol="${symbol.toLowerCase()}"]`);
     const tfSelect = card?.querySelector('.timeframe-select');
     const currentInterval = tfSelect?.value || '5m';
 
-    // Unsubscribe data stream
+    // Unsubscribe from data stream
     if (dataManager) {
       dataManager.unsubscribe(symbol, currentInterval).catch(error => {
         console.warn(`[ChartCleanup] Error unsubscribing ${symbol}:`, error);
       });
     }
 
-    // Destroy chart instance (removes listeners, DOM refs, observers)
+    // Destroy chart instance
     if (chartInstance && typeof chartInstance.destroy === 'function') {
       chartInstance.destroy();
     }
 
-    allCharts.delete(chartKey);
+    // Run chart-specific cleanup
+    if (cleanup && typeof cleanup === 'function') {
+      cleanup();
+      cleanupManager.removeCleanupTask(cleanup);
+    }
+
+    appState.charts.delete(chartKey);
     console.log(`[ChartCleanup] Successfully cleaned up chart: ${symbol}`);
   } catch (error) {
     console.error(`[ChartCleanup] Error cleaning up chart ${chartKey}:`, error);
   }
 }
 
-/**
- * Setup remove button with proper cleanup
- */
+// ==================== BUTTON HANDLERS ====================
+
 function setupRemoveButton(card, chartKey) {
   const removeBtn = card?.querySelector('.remove-btn');
   if (!removeBtn) return null;
 
+  const abortController = new AbortController();
+
   const removeHandler = () => {
-    if (isShuttingDown || window.isGlobalError) return;
+    if (appState.isShuttingDown || window.isGlobalError) return;
 
     try {
       cleanupChart(chartKey);
@@ -297,71 +394,63 @@ function setupRemoveButton(card, chartKey) {
     }
   };
 
-  removeBtn.addEventListener('click', removeHandler);
+  removeBtn.addEventListener('click', removeHandler, { signal: abortController.signal });
 
   const cleanup = () => {
-    try {
-      removeBtn.removeEventListener('click', removeHandler);
-    } catch (error) {
-      console.warn('[RemoveButton] Cleanup error:', error);
-    }
+    abortController.abort();
   };
 
-  cleanupManager.addCleanupTask(cleanup);
   return cleanup;
 }
 
-/**
- * Setup timeframe change handler
- */
+// ==================== TIMEFRAME HANDLER ====================
+
 function setupTimeframeHandler(card, chartInstance, dataManager, symbol) {
   const tfSelect = card?.querySelector('.timeframe-select');
   if (!tfSelect) return null;
 
   let currentInterval = tfSelect.value;
+  let isChanging = false;
+  const abortController = new AbortController();
 
   const changeHandler = async () => {
-    if (isShuttingDown || window.isGlobalError) return;
+    if (appState.isShuttingDown || window.isGlobalError || isChanging) return;
+
+    const newInterval = tfSelect.value;
+    if (newInterval === currentInterval) return;
+
+    isChanging = true;
+    console.log(`[TimeframeHandler] Changing ${symbol} from ${currentInterval} to ${newInterval}`);
 
     try {
-      const newInterval = tfSelect.value;
-      if (newInterval === currentInterval) return;
-
-      console.log(`[TimeframeHandler] Changing ${symbol} from ${currentInterval} to ${newInterval}`);
-
       await dataManager.unsubscribe(symbol, currentInterval);
       currentInterval = newInterval;
       await dataManager.loadAndStart(symbol, currentInterval, chartInstance);
-
       console.log(`[TimeframeHandler] Successfully switched ${symbol} to ${newInterval}`);
     } catch (error) {
       console.error(`[TimeframeHandler] Failed to switch interval for ${symbol}:`, error);
       tfSelect.value = currentInterval;
+    } finally {
+      isChanging = false;
     }
   };
 
-  tfSelect.addEventListener('change', changeHandler);
+  tfSelect.addEventListener('change', changeHandler, { signal: abortController.signal });
 
   const cleanup = () => {
-    try {
-      tfSelect.removeEventListener('change', changeHandler);
-    } catch (error) {
-      console.warn('[TimeframeHandler] Cleanup error:', error);
-    }
+    abortController.abort();
   };
 
-  cleanupManager.addCleanupTask(cleanup);
   return cleanup;
 }
 
-/**
- * Initialize all charts with comprehensive cleanup
- */
-async function initializeCharts() {
-  if (isShuttingDown) return;
+// ==================== CHART INITIALIZATION ====================
 
-  statusLabel = document.getElementById('label-global');
-  statusDot = document.querySelector('.dot-global');
+async function initializeCharts() {
+  if (appState.isShuttingDown || appState.isInitialized) return;
+
+  appState.statusLabel = document.getElementById('label-global');
+  appState.statusDot = document.querySelector('.dot-global');
   const grid = document.getElementById('chart-grid');
 
   if (!grid) {
@@ -370,36 +459,37 @@ async function initializeCharts() {
   }
 
   try {
-    await Promise.any(CDN_SOURCES.map(loadScript));
+    // Load LightweightCharts library with fallback CDNs
+    await Promise.any(CDN_SOURCES.map(src => loadScript(src)));
+    
     if (typeof LightweightCharts === 'undefined') {
       throw new Error('Lightweight Charts not loaded.');
     }
 
     console.log('[InitCharts] LightweightCharts loaded successfully');
 
-    if (statusLabel) statusLabel.textContent = 'CONNECTED';
-    if (statusDot) statusDot.style.background = 'var(--ok)';
+    if (appState.statusLabel) appState.statusLabel.textContent = 'CONNECTED';
+    if (appState.statusDot) appState.statusDot.style.background = 'var(--ok)';
 
-    try {
-      const savedOrder = JSON.parse(localStorage.getItem('chartOrder') || '[]');
-      if (Array.isArray(savedOrder) && savedOrder.length > 0) {
-        const nodeMap = {};
-        Array.from(grid.querySelectorAll('.chart-card')).forEach(n => {
-          if (n.dataset && n.dataset.symbol) {
-            nodeMap[n.dataset.symbol.toLowerCase()] = n;
-          }
-        });
-        savedOrder.forEach(sym => {
-          const node = nodeMap[(sym || '').toLowerCase()];
-          if (node) grid.appendChild(node);
-        });
-      }
-    } catch (err) {
-      console.warn('[InitCharts] Could not restore chart order:', err);
+    // Restore chart order from storage
+    const savedOrder = storage.get('chartOrder', []);
+    if (Array.isArray(savedOrder) && savedOrder.length > 0) {
+      const nodeMap = new Map();
+      Array.from(grid.querySelectorAll('.chart-card')).forEach(node => {
+        if (node.dataset?.symbol) {
+          nodeMap.set(node.dataset.symbol.toLowerCase(), node);
+        }
+      });
+      
+      savedOrder.forEach(sym => {
+        const node = nodeMap.get((sym || '').toLowerCase());
+        if (node) grid.appendChild(node);
+      });
     }
 
-    for (const config of chartConfigs) {
-      if (isShuttingDown) break;
+    // Initialize all charts in parallel
+    const initPromises = chartConfigs.map(async (config) => {
+      if (appState.isShuttingDown) return;
 
       try {
         const dataManager = new ChartDataManager();
@@ -407,82 +497,105 @@ async function initializeCharts() {
 
         if (!chartInstance.container) {
           console.warn(`[InitCharts] Skipping ${config.symbol} - container not found`);
-          continue;
+          return;
         }
 
         chartInstance.init();
 
-        const chartKey = config.cardId;
-        allCharts.set(chartKey, { chartInstance, dataManager, symbol: config.symbol });
-
         const card = document.getElementById(config.cardId);
         if (!card) {
           console.warn(`[InitCharts] Card not found for ${config.symbol}`);
-          continue;
+          return;
         }
 
+        // Setup all handlers
         const fullscreenCleanup = enableFullscreen(card, chartInstance);
-        const removeCleanup = setupRemoveButton(card, chartKey);
+        const removeCleanup = setupRemoveButton(card, config.cardId);
         const timeframeCleanup = setupTimeframeHandler(card, chartInstance, dataManager, config.symbol);
 
+        // Combined cleanup function
+        const chartCleanup = () => {
+          fullscreenCleanup?.();
+          removeCleanup?.();
+          timeframeCleanup?.();
+        };
+
+        // Store chart reference with cleanup
+        appState.charts.set(config.cardId, {
+          chartInstance,
+          dataManager,
+          symbol: config.symbol,
+          cleanup: chartCleanup
+        });
+
+        cleanupManager.addCleanupTask(chartCleanup);
+
+        // Load initial data
         const tfSelect = card.querySelector('.timeframe-select');
         const initialInterval = tfSelect?.value || '5m';
 
-        try {
-          const candles = await dataManager.loadAndStart(config.symbol, initialInterval, chartInstance);
-          console.log(`[InitCharts] ${config.symbol} loaded ${candles?.length || 0} candles`);
-        } catch (err) {
-          console.error(`[InitCharts] Failed to load initial data for ${config.symbol}:`, err);
-        }
-
-        cleanupManager.addCleanupTask(() => {
-          console.log(`[ChartCleanup] Cleaning up ${config.symbol}`);
-          try {
-            fullscreenCleanup?.();
-            removeCleanup?.();
-            timeframeCleanup?.();
-            cleanupChart(chartKey);
-          } catch (error) {
-            console.warn(`[ChartCleanup] Error cleaning up ${config.symbol}:`, error);
-          }
-        });
-
-        console.log(`[InitCharts] Successfully initialized ${config.symbol}`);
+        const candles = await dataManager.loadAndStart(config.symbol, initialInterval, chartInstance);
+        console.log(`[InitCharts] ${config.symbol} loaded ${candles?.length || 0} candles`);
       } catch (err) {
         console.error(`[InitCharts] Failed to initialize ${config.symbol}:`, err);
       }
-    }
+    });
 
+    // Wait for all charts to initialize
+    await Promise.allSettled(initPromises);
+
+    // Setup drag and drop functionality
     const dragDropCleanup = enableDragDrop(grid);
-    if (dragDropCleanup && typeof dragDropCleanup === 'function') {
+    if (typeof dragDropCleanup === 'function') {
       cleanupManager.addCleanupTask(dragDropCleanup);
     }
 
     adjustGridLayout();
+    appState.isInitialized = true;
     console.log('[InitCharts] All charts initialized successfully');
   } catch (error) {
     console.error('[InitCharts] Failed to initialize charts:', error);
-    if (statusLabel) statusLabel.textContent = 'ERROR';
-    if (statusDot) statusDot.style.background = 'var(--danger)';
+    if (appState.statusLabel) appState.statusLabel.textContent = 'ERROR';
+    if (appState.statusDot) appState.statusDot.style.background = 'var(--danger)';
     window.handleGlobalError?.(true, error, 'LightweightCharts bootstrap failure');
   }
 }
 
-/**
- * Start the application
- */
+// ==================== APPLICATION LIFECYCLE ====================
+
 async function startApplication() {
+  if (appState.isInitialized) {
+    console.warn('[App] Application already initialized');
+    return;
+  }
+
   try {
-    isShuttingDown = false;
+    appState.isShuttingDown = false;
+    appState.abortController = new AbortController();
     window.isGlobalError = false;
     window.handleGlobalError?.(false);
+
+    cleanupManager.setupGlobalCleanup();
 
     console.log('[App] Starting crypto charts application...');
 
     await initializeCharts();
 
-    const tickerCleanup = await setupTickerSelect(allCharts, adjustGridLayout, enableFullscreen);
-    if (tickerCleanup && typeof tickerCleanup === 'function') {
+    // ✅ Initialize Alert System
+    try {
+      setupAlertUI();
+      console.log('[App] ✅ Alert system initialized and ready');
+    } catch (error) {
+      console.error('[App] Failed to initialize alert system:', error);
+      // Don't fail the entire app if alerts fail
+    }
+
+    const tickerCleanup = await setupTickerSelect(
+      appState.charts,
+      adjustGridLayout,
+      enableFullscreen
+    );
+    if (typeof tickerCleanup === 'function') {
       cleanupManager.addCleanupTask(tickerCleanup);
     }
 
@@ -493,35 +606,54 @@ async function startApplication() {
   }
 }
 
-/**
- * Shutdown the application
- */
 export async function shutdownApplication() {
-  if (isShuttingDown) return;
+  if (appState.isShuttingDown) {
+    console.warn('[App] Shutdown already in progress');
+    return;
+  }
 
   console.log('[App] Shutting down application...');
-  isShuttingDown = true;
+  appState.isShuttingDown = true;
 
   try {
-    await cleanupManager.destroy();
+    // Abort all ongoing operations
+    appState.abortController?.abort();
 
-    const remainingCharts = Array.from(allCharts.keys());
-    for (const chartKey of remainingCharts) {
-      try {
-        cleanupChart(chartKey);
-      } catch (error) {
-        console.warn(`[Shutdown] Error cleaning chart ${chartKey}:`, error);
+    // Cleanup alert system
+    try {
+      if (AlertSystem && typeof AlertSystem.destroy === 'function') {
+        AlertSystem.destroy();
+        console.log('[App] Alert system destroyed');
       }
+    } catch (error) {
+      console.warn('[App] Error destroying alert system:', error);
     }
 
-    allCharts.clear();
+    // Run cleanup manager
+    await cleanupManager.destroy();
+
+    // Clean up any remaining charts
+    const remainingCharts = Array.from(appState.charts.keys());
+    for (const chartKey of remainingCharts) {
+      cleanupChart(chartKey);
+    }
+
+    // Reset state
+    appState.charts.clear();
+    appState.isInitialized = false;
+    lastGridState = null;
+    
     console.log('[App] Application shutdown complete');
   } catch (error) {
     console.error('[App] Error during application shutdown:', error);
   }
 }
 
-// Initialize application
-document.addEventListener('DOMContentLoaded', startApplication);
-window.addEventListener('beforeunload', shutdownApplication);
-window.addEventListener('unload', shutdownApplication);
+// ==================== INITIALIZATION ====================
+
+// Initialize on DOM ready
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', startApplication, { once: true });
+} else {
+  startApplication();
+}

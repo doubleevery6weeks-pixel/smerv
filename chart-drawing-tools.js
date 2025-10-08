@@ -1,12 +1,13 @@
 // chart-drawing-tools.js
 // Drawing Tools for Lightweight Charts with per-chart localStorage support
 // Supports: trend line, horizontal/vertical line, Fibonacci retracement, rectangle, ellipse
+// ✅ THEME-AWARE: Respects light/dark theme toggle
 
 export class DrawingToolsManager {
   constructor(chart, container, chartKey) {
     this.chart = chart;
-    this.container = container; // DOM node overlaying the chart (position: relative)
-    this.chartKey = chartKey; // unique key per chart (e.g. symbol-timeframe)
+    this.container = container;
+    this.chartKey = chartKey;
     this.overlay = null;
     this.toolbar = null;
     this.activeTool = null;
@@ -15,23 +16,94 @@ export class DrawingToolsManager {
     this.currentShape = null;
     this.color = "#2196f3";
     this.thickness = 2;
-    this.eventHandlers = []; // ✅ Track all event handlers for cleanup
+    this.eventHandlers = [];
     this.resizeHandler = null;
+    this.toolButtons = {};
+    this.themeObserver = null; // ✅ NEW: Watch for theme changes
     this.init();
     this.loadDrawings();
   }
 
-  // ✅ Track event listeners for proper cleanup
   addEventListener(element, event, handler, options) {
     if (!element) return;
     element.addEventListener(event, handler, options);
     this.eventHandlers.push({ element, event, handler, options });
   }
 
+  // ✅ NEW: Get current theme-aware colors
+  getThemedColors() {
+    const root = document.documentElement;
+    const theme = root.getAttribute('data-theme') || 'dark';
+    const isDark = theme === 'dark';
+    
+    return {
+      toolbarBg: isDark ? 'rgba(24,32,44,0.96)' : 'rgba(245,247,250,0.96)',
+      toolbarBorder: isDark ? '#30363d' : '#d0d7de',
+      buttonColor: isDark ? '#fff' : '#23272e',
+      buttonHoverBg: isDark ? 'rgba(33, 118, 255, 0.2)' : 'rgba(33, 118, 255, 0.15)',
+      inputBg: isDark ? '#161b22' : '#ffffff',
+      inputBorder: isDark ? '#30363d' : '#d0d7de',
+      inputColor: isDark ? '#fff' : '#23272e',
+    };
+  }
+
+  // ✅ NEW: Apply themed styles to toolbar
+  applyThemedStyles() {
+    if (!this.toolbar) return;
+    
+    const colors = this.getThemedColors();
+    
+    Object.assign(this.toolbar.style, {
+      background: colors.toolbarBg,
+      borderRadius: "7px",
+      padding: "4px 6px",
+      gap: "7px",
+      alignItems: "center",
+      boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
+      backdropFilter: "blur(10px)",
+      border: `1px solid ${colors.toolbarBorder}`
+    });
+
+    // Update button colors
+    Object.values(this.toolButtons).forEach(btn => {
+      btn.style.color = colors.buttonColor;
+    });
+
+    // Update input fields
+    const inputs = this.toolbar.querySelectorAll('input[type="number"]');
+    inputs.forEach(input => {
+      Object.assign(input.style, {
+        background: colors.inputBg,
+        color: colors.inputColor,
+        border: `1px solid ${colors.inputBorder}`
+      });
+    });
+  }
+
+  // ✅ NEW: Watch for theme changes
+  setupThemeObserver() {
+    const root = document.documentElement;
+    
+    this.themeObserver = new MutationObserver((mutations) => {
+      mutations.forEach((mutation) => {
+        if (mutation.type === 'attributes' && mutation.attributeName === 'data-theme') {
+          console.log('[DrawingTools] Theme changed, updating styles');
+          this.applyThemedStyles();
+        }
+      });
+    });
+
+    this.themeObserver.observe(root, {
+      attributes: true,
+      attributeFilter: ['data-theme']
+    });
+  }
+
   init() {
     this.createOverlay();
     this.createToolbar();
     this.attachEvents();
+    this.setupThemeObserver(); // ✅ Watch for theme changes
     
     // Track resize handler
     this.resizeHandler = () => this.redraw();
@@ -39,7 +111,6 @@ export class DrawingToolsManager {
   }
 
   createOverlay() {
-    // SVG overlay for drawing
     this.overlay = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     Object.assign(this.overlay.style, {
       position: "absolute",
@@ -47,14 +118,15 @@ export class DrawingToolsManager {
       left: 0,
       width: "100%",
       height: "100%",
-      pointerEvents: "none", // ✅ Start disabled, enable only when drawing tools active
+      pointerEvents: "none",
       zIndex: 20
     });
     this.container.appendChild(this.overlay);
   }
 
   createToolbar() {
-    // Toolbar with tool buttons and color/thickness pickers
+    const colors = this.getThemedColors(); // ✅ Get theme colors
+    
     let bar = document.createElement("div");
     bar.className = "drawing-toolbar";
     Object.assign(bar.style, {
@@ -62,10 +134,11 @@ export class DrawingToolsManager {
       top: "6px",
       right: "8px",
       zIndex: 21,
-      background: "rgba(24,32,44,0.96)",
+      background: colors.toolbarBg,
+      border: `1px solid ${colors.toolbarBorder}`,
       borderRadius: "7px",
       padding: "4px 6px",
-      display: "none", // ✅ Start hidden
+      display: "none",
       gap: "7px",
       alignItems: "center",
       boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
@@ -83,7 +156,7 @@ export class DrawingToolsManager {
       { tool: "ellipse",label: "◯",  tooltip: "Ellipse" },
       { tool: "erase",  label: "✖", tooltip: "Delete Mode" },
     ];
-    this.toolButtons = {};
+    
     for (const t of tools) {
       let btn = document.createElement("button");
       btn.textContent = t.label;
@@ -93,7 +166,7 @@ export class DrawingToolsManager {
         fontSize: "1.14em",
         background: "none",
         border: "none",
-        color: "#fff",
+        color: colors.buttonColor, // ✅ Theme-aware
         cursor: "pointer",
         padding: "2px 7px",
         borderRadius: "4px",
@@ -128,9 +201,9 @@ export class DrawingToolsManager {
     thickInput.title = "Line Width";
     thickInput.oninput = e => { this.thickness = Math.max(1, Math.min(10, +e.target.value)); };
     Object.assign(thickInput.style, {
-      background: "#161b22",
-      color: "#fff",
-      border: "1px solid #30363d",
+      background: colors.inputBg, // ✅ Theme-aware
+      color: colors.inputColor, // ✅ Theme-aware
+      border: `1px solid ${colors.inputBorder}`, // ✅ Theme-aware
       borderRadius: "4px",
       padding: "2px 4px"
     });
@@ -151,7 +224,7 @@ export class DrawingToolsManager {
       fontSize: "1.14em",
       background: "none",
       border: "none",
-      color: "#fff",
+      color: colors.buttonColor, // ✅ Theme-aware
       cursor: "pointer",
       borderRadius: "4px",
       padding: "2px 7px"
@@ -159,7 +232,7 @@ export class DrawingToolsManager {
     bar.appendChild(clearBtn);
     
     this.container.appendChild(bar);
-    this.toolbar = bar; // ✅ Store reference
+    this.toolbar = bar;
   }
 
   setTool(tool) {
@@ -181,14 +254,12 @@ export class DrawingToolsManager {
   }
 
   attachEvents() {
-    // SVG mouse events for drawing/deleting/selecting
     this.addEventListener(this.overlay, "mousedown", e => this.onDown(e));
     this.addEventListener(this.overlay, "mousemove", e => this.onMove(e));
     this.addEventListener(this.overlay, "mouseup", e => this.onUp(e));
     
-    // Touch events with better handling
     this.addEventListener(this.overlay, "touchstart", e => {
-      e.preventDefault(); // Prevent scrolling while drawing
+      e.preventDefault();
       this.onDown(e);
     }, { passive: false });
     this.addEventListener(this.overlay, "touchmove", e => {
@@ -197,7 +268,6 @@ export class DrawingToolsManager {
     }, { passive: false });
     this.addEventListener(this.overlay, "touchend", e => this.onUp(e));
     
-    // Erase on click if in erase mode
     this.addEventListener(this.overlay, "click", e => {
       if (this.activeTool === "erase") {
         const [x, y] = this.getChartXY(e);
@@ -212,7 +282,6 @@ export class DrawingToolsManager {
   }
 
   getChartXY(e) {
-    // Get XY in SVG overlay coordinates
     const rect = this.overlay.getBoundingClientRect();
     let clientX, clientY;
     if (e.touches && e.touches.length) {
@@ -236,7 +305,7 @@ export class DrawingToolsManager {
       points: [{ x, y }] 
     };
     if (["hline", "vline", "trend", "fib", "rect", "ellipse"].includes(this.activeTool)) {
-      this.currentShape.points.push({ x, y }); // Reserve second point
+      this.currentShape.points.push({ x, y });
     }
     if (this.activeTool === "fib") {
       this.currentShape.levels = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1];
@@ -258,12 +327,11 @@ export class DrawingToolsManager {
     const [x, y] = this.getChartXY(e);
     this.currentShape.points[1] = { x, y };
     
-    // Only keep if not zero-length
     const p0 = this.currentShape.points[0];
     const p1 = this.currentShape.points[1];
     const distance = Math.sqrt(Math.pow(p1.x - p0.x, 2) + Math.pow(p1.y - p0.y, 2));
     
-    if (distance > 5) { // Minimum 5px to avoid accidental dots
+    if (distance > 5) {
       this.drawings.push(this.currentShape);
       this.saveDrawings();
     }
@@ -275,9 +343,7 @@ export class DrawingToolsManager {
   }
 
   redraw() {
-    // Remove all children
     while (this.overlay.firstChild) this.overlay.removeChild(this.overlay.firstChild);
-    // Draw all saved
     for (const s of this.drawings) this.drawShape(s, false);
   }
 
@@ -361,7 +427,6 @@ export class DrawingToolsManager {
     }
     
     if (tool === "fib") {
-      // Draw lines for each fib level between the two y-values
       const [p1, p2] = points;
       const levels = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1];
       for (let lvl of levels) {
@@ -377,7 +442,6 @@ export class DrawingToolsManager {
         if (isTemp) line.setAttribute("opacity", 0.6);
         this.overlay.appendChild(line);
         
-        // Add text label
         const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
         text.setAttribute("x", Math.max(p1.x, p2.x) + 6); 
         text.setAttribute("y", y + 4);
@@ -391,7 +455,6 @@ export class DrawingToolsManager {
     }
   }
 
-  // ---- Persistence ----
   saveDrawings() {
     try {
       localStorage.setItem("drawings-" + this.chartKey, JSON.stringify(this.drawings));
@@ -411,13 +474,11 @@ export class DrawingToolsManager {
     }
   }
 
-  // Simple hit-testing for erase mode
   hitTest(shape, x, y) {
     const dist2 = (a, b) => (a.x - b.x) ** 2 + (a.y - b.y) ** 2;
     if (!shape.points[1]) return false;
     
     if (["trend", "hline", "vline"].includes(shape.tool)) {
-      // Closest distance to segment
       const p1 = shape.points[0], p2 = shape.points[1];
       const l2 = dist2(p1, p2);
       if (l2 === 0) return false;
@@ -443,7 +504,6 @@ export class DrawingToolsManager {
     }
     
     if (shape.tool === "fib") {
-      // Hit any level line
       const [p1, p2] = shape.points;
       const levels = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1];
       for (let lvl of levels) {
@@ -456,46 +516,64 @@ export class DrawingToolsManager {
     return false;
   }
 
-  // ✅ ADD DESTROY METHOD FOR CLEANUP
   destroy() {
     console.log('[DrawingTools] Destroying...');
     
     try {
-      // Remove resize handler
+      this.activeTool = null;
+      this.isDrawing = false;
+      this.currentShape = null;
+      
+      // ✅ Disconnect theme observer
+      if (this.themeObserver) {
+        this.themeObserver.disconnect();
+        this.themeObserver = null;
+      }
+      
       if (this.resizeHandler) {
         window.removeEventListener('resize', this.resizeHandler);
         this.resizeHandler = null;
       }
 
-      // Remove all tracked event listeners
       this.eventHandlers.forEach(({ element, event, handler, options }) => {
         try {
-          element.removeEventListener(event, handler, options);
+          if (element && typeof element.removeEventListener === 'function') {
+            element.removeEventListener(event, handler, options);
+          }
         } catch (err) {
           console.warn('[DrawingTools] Error removing event listener:', err);
         }
       });
       this.eventHandlers = [];
 
-      // Remove overlay from DOM
-      if (this.overlay && this.overlay.parentNode) {
-        this.overlay.parentNode.removeChild(this.overlay);
+      if (this.toolButtons) {
+        Object.keys(this.toolButtons).forEach(key => {
+          this.toolButtons[key] = null;
+        });
+        this.toolButtons = null;
       }
-      this.overlay = null;
 
-      // Remove toolbar from DOM
-      if (this.toolbar && this.toolbar.parentNode) {
-        this.toolbar.parentNode.removeChild(this.toolbar);
+      if (this.overlay) {
+        while (this.overlay.firstChild) {
+          this.overlay.removeChild(this.overlay.firstChild);
+        }
+        if (this.overlay.parentNode) {
+          this.overlay.parentNode.removeChild(this.overlay);
+        }
+        this.overlay = null;
       }
-      this.toolbar = null;
 
-      // Clear references
-      this.toolButtons = {};
+      if (this.toolbar) {
+        if (this.toolbar.parentNode) {
+          this.toolbar.parentNode.removeChild(this.toolbar);
+        }
+        this.toolbar = null;
+      }
+
       this.drawings = [];
-      this.currentShape = null;
       this.chart = null;
       this.container = null;
-      this.activeTool = null;
+      this.chartKey = null;
 
       console.log('[DrawingTools] Destroyed successfully');
     } catch (error) {

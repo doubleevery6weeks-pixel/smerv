@@ -7,6 +7,7 @@
  * - Error event hooks per stream
  * - REST methods for symbol validation & history
  * - Async error handling: global error notifications for UI
+ * - FIXED: Race condition in stale timer logic
  */
 
 class BinanceSocket {
@@ -20,6 +21,7 @@ class BinanceSocket {
     this.staleTimers = new Map();   // key: symbol-interval -> timeout id
     this.staleGenerations = new Map(); // key: symbol-interval -> generation token
     this.errorHandlers = new Map(); // key: symbol-interval/global -> Set of error handlers
+    this.socketStates = new Map();  // ✅ NEW: Track socket lifecycle states
 
     this._globalErrorState = false;
     this._setupDefaultGlobalErrorHook();
@@ -133,25 +135,44 @@ class BinanceSocket {
   }
 
   /**
-   * Subscribe to a symbol/interval stream (WebSocket pooling).
+   * ✅ FIXED: Subscribe to a symbol/interval stream (WebSocket pooling with race condition fix).
    */
   subscribe(symbol, interval, callback) {
     const key = `${symbol}-${interval}`;
+    
+    // Initialize subscriptions set if needed
     if (!this.subscriptions.has(key)) {
       this.subscriptions.set(key, new Set());
     }
     this.subscriptions.get(key).add(callback);
 
-    // Cancel stale timer and bump generation if needed
+    // ✅ RACE CONDITION FIX: Cancel stale timer and bump generation BEFORE checking socket
     if (this.staleTimers.has(key)) {
       clearTimeout(this.staleTimers.get(key));
       this.staleTimers.delete(key);
-      let gen = (this.staleGenerations.get(key) || 0) + 1;
-      this.staleGenerations.set(key, gen);
     }
+    
+    // ✅ Always bump generation when new subscription added
+    const currentGen = this.staleGenerations.get(key) || 0;
+    const newGen = currentGen + 1;
+    this.staleGenerations.set(key, newGen);
+    
+    console.log(`[BinanceSocket] Subscribe: ${key}, generation: ${newGen}, callbacks: ${this.subscriptions.get(key).size}`);
 
-    // If socket already exists for stream, do nothing
-    if (this.sockets.has(key)) return;
+    // If socket already exists and is connected, we're done
+    const existingSocket = this.sockets.get(key);
+    const socketState = this.socketStates.get(key);
+    
+    if (existingSocket && socketState === 'connected') {
+      console.log(`[BinanceSocket] Reusing existing connected socket for ${key}`);
+      return;
+    }
+    
+    // If socket is connecting, wait for it
+    if (existingSocket && socketState === 'connecting') {
+      console.log(`[BinanceSocket] Socket already connecting for ${key}`);
+      return;
+    }
 
     // Init reconnect info
     if (!this.reconnectInfo.has(key)) {
@@ -162,31 +183,49 @@ class BinanceSocket {
   }
 
   /**
-   * Unsubscribe a callback from a symbol/interval.
+   * ✅ FIXED: Unsubscribe a callback from a symbol/interval with proper race condition handling.
    */
   unsubscribe(symbol, interval, callback) {
     const key = `${symbol}-${interval}`;
     const cbs = this.subscriptions.get(key);
-    if (!cbs) return;
+    
+    if (!cbs) {
+      console.log(`[BinanceSocket] No subscriptions found for ${key}`);
+      return;
+    }
+    
     cbs.delete(callback);
+    console.log(`[BinanceSocket] Unsubscribe: ${key}, remaining callbacks: ${cbs.size}`);
 
-    // Only close if after deletion, there are no callbacks left
+    // Only start stale timer if there are no callbacks left
     if (cbs.size === 0) {
-      let gen = (this.staleGenerations.get(key) || 0) + 1;
-      this.staleGenerations.set(key, gen);
-      this._startStaleTimer(key, symbol, interval, 10 * 60 * 1000, gen);
+      // ✅ Bump generation and start fresh timer
+      const currentGen = this.staleGenerations.get(key) || 0;
+      const newGen = currentGen + 1;
+      this.staleGenerations.set(key, newGen);
+      
+      console.log(`[BinanceSocket] No more callbacks for ${key}, starting stale timer with generation ${newGen}`);
+      this._startStaleTimer(key, symbol, interval, 10 * 60 * 1000, newGen);
     }
   }
 
   _openSocket(key, symbol, interval) {
+    // ✅ Set state to 'connecting' before creating socket
+    this.socketStates.set(key, 'connecting');
+    
     const streamName = `${symbol.toLowerCase()}@kline_${interval}`;
     const wsUrl = `wss://stream.binance.com:9443/ws/${streamName}`;
     const ws = new WebSocket(wsUrl);
 
     this.sockets.set(key, ws);
+    console.log(`[BinanceSocket] Opening socket for ${key}`);
 
     ws.onopen = () => {
       console.log(`[BinanceSocket] Connected: ${key}`);
+      
+      // ✅ Set state to 'connected'
+      this.socketStates.set(key, 'connected');
+      
       const info = this.reconnectInfo.get(key);
       if (info) info.attempt = 0;
       this._clearGlobalError();
@@ -228,15 +267,26 @@ class BinanceSocket {
     ws.onerror = (err) => {
       console.error(`[BinanceSocket] WebSocket error for ${key}`, err);
       this._emitError(key, err, { type: 'socket', action: 'onerror' });
+      
+      // ✅ Set state to 'error'
+      this.socketStates.set(key, 'error');
+      
       this._handleReconnect(key, symbol, interval);
     };
 
     ws.onclose = () => {
       console.log(`[BinanceSocket] Closed: ${key}`);
+      
+      // ✅ Clear state
+      this.socketStates.delete(key);
       this.sockets.delete(key);
+      
+      // Only reconnect if there are still active subscriptions
       if (this.subscriptions.has(key) && this.subscriptions.get(key).size > 0) {
+        console.log(`[BinanceSocket] Socket closed but ${this.subscriptions.get(key).size} callbacks remain, reconnecting...`);
         this._handleReconnect(key, symbol, interval);
       } else {
+        console.log(`[BinanceSocket] Socket closed with no remaining callbacks`);
         this.reconnectInfo.delete(key);
       }
     };
@@ -246,6 +296,13 @@ class BinanceSocket {
     const info = this.reconnectInfo.get(key);
     if (!info || info.reconnecting) return;
 
+    // ✅ Check if there are still subscribers before reconnecting
+    const cbs = this.subscriptions.get(key);
+    if (!cbs || cbs.size === 0) {
+      console.log(`[BinanceSocket] No subscribers for ${key}, skipping reconnect`);
+      return;
+    }
+
     info.reconnecting = true;
     info.attempt += 1;
 
@@ -254,57 +311,129 @@ class BinanceSocket {
     console.log(`[BinanceSocket] Reconnecting for ${key} in ${delay / 1000}s (attempt ${info.attempt})`);
 
     setTimeout(() => {
+      // ✅ Double-check subscribers still exist before reconnecting
+      const currentCbs = this.subscriptions.get(key);
+      if (!currentCbs || currentCbs.size === 0) {
+        console.log(`[BinanceSocket] Subscribers gone during reconnect delay for ${key}, aborting`);
+        info.reconnecting = false;
+        return;
+      }
+      
       info.reconnecting = false;
       this._openSocket(key, symbol, interval);
     }, delay);
   }
 
   /**
-   * Start a stale socket timer. If no new callback is added before timeout, closes socket.
+   * ✅ FIXED: Start a stale socket timer with proper race condition handling.
    * Uses generation token to avoid race conditions.
    */
   _startStaleTimer(key, symbol, interval, timeoutMs = 10 * 60 * 1000, gen) {
-    if (this.staleTimers.has(key)) return;
+    // ✅ Clear any existing timer first
+    if (this.staleTimers.has(key)) {
+      clearTimeout(this.staleTimers.get(key));
+      this.staleTimers.delete(key);
+    }
 
-    this.staleTimers.set(key, setTimeout(() => {
-      if (this.staleGenerations.get(key) !== gen) return;
+    console.log(`[BinanceSocket] Starting stale timer for ${key} (gen: ${gen}, timeout: ${timeoutMs}ms)`);
+
+    const timerId = setTimeout(() => {
+      console.log(`[BinanceSocket] Stale timer fired for ${key} (gen: ${gen})`);
+      
+      // ✅ CRITICAL: Check generation token to prevent race condition
+      const currentGen = this.staleGenerations.get(key);
+      if (currentGen !== gen) {
+        console.log(`[BinanceSocket] Generation mismatch for ${key}: expected ${gen}, got ${currentGen}. Aborting close.`);
+        return;
+      }
+      
+      // ✅ Double-check subscriptions
       const cbs = this.subscriptions.get(key);
       if (!cbs || cbs.size === 0) {
+        console.log(`[BinanceSocket] Stale timer confirmed: closing ${key}`);
         this._closeSocket(key, symbol, interval);
+      } else {
+        console.log(`[BinanceSocket] Stale timer aborted: ${key} has ${cbs.size} active callbacks`);
       }
+      
+      // Clean up timer reference
       this.staleTimers.delete(key);
       this.staleGenerations.delete(key);
-    }, timeoutMs));
+    }, timeoutMs);
+
+    this.staleTimers.set(key, timerId);
   }
 
   /**
-   * Close WebSocket for symbol/interval
+   * ✅ FIXED: Close WebSocket for symbol/interval with proper cleanup
    */
   _closeSocket(key, symbol, interval) {
-    // Double-check if any callbacks remain
+    console.log(`[BinanceSocket] Closing socket for ${key}`);
+    
+    // ✅ Triple-check if any callbacks remain (belt and suspenders)
     const cbs = this.subscriptions.get(key);
-    if (cbs && cbs.size > 0) return;
+    if (cbs && cbs.size > 0) {
+      console.warn(`[BinanceSocket] Aborting close: ${key} has ${cbs.size} active callbacks!`);
+      return;
+    }
 
+    // Clear stale timer if it exists
     if (this.staleTimers.has(key)) {
       clearTimeout(this.staleTimers.get(key));
       this.staleTimers.delete(key);
     }
     this.staleGenerations.delete(key);
 
+    // Close the WebSocket
     const ws = this.sockets.get(key);
     if (ws) {
       try {
-        ws.close();
+        // ✅ Check socket state before closing
+        if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+          ws.close();
+          console.log(`[BinanceSocket] WebSocket closed for ${key}`);
+        } else {
+          console.log(`[BinanceSocket] WebSocket already closed for ${key} (readyState: ${ws.readyState})`);
+        }
       } catch (err) {
         console.warn(`[BinanceSocket] Error closing socket ${key}`, err);
         this._emitError(key, err, { type: 'socket', action: 'close' });
       }
     }
 
+    // Clean up all references
     this.sockets.delete(key);
+    this.socketStates.delete(key);
     this.subscriptions.delete(key);
     this.reconnectInfo.delete(key);
-    this.errorHandlers.delete(key); // Clean up error handlers for this key
+    this.errorHandlers.delete(key);
+    
+    console.log(`[BinanceSocket] All references cleared for ${key}`);
+  }
+
+  /**
+   * ✅ NEW: Get socket status for debugging
+   */
+  getSocketStatus(symbol, interval) {
+    const key = `${symbol}-${interval}`;
+    return {
+      key,
+      hasSocket: this.sockets.has(key),
+      socketState: this.socketStates.get(key) || 'none',
+      subscriberCount: this.subscriptions.get(key)?.size || 0,
+      generation: this.staleGenerations.get(key) || 0,
+      hasStaleTimer: this.staleTimers.has(key),
+      reconnectInfo: this.reconnectInfo.get(key) || null
+    };
+  }
+
+  /**
+   * ✅ NEW: Force cleanup (for debugging/testing)
+   */
+  forceCleanup(symbol, interval) {
+    const key = `${symbol}-${interval}`;
+    console.log(`[BinanceSocket] Force cleanup: ${key}`);
+    this._closeSocket(key, symbol, interval);
   }
 }
 
