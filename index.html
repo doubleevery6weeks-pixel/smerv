@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>Crypto Charts Grid</title>
   <link rel="stylesheet" href="styles.css">
   <style>
@@ -27,7 +27,7 @@
 </head>
 <body>
   <!-- Theme Toggle Button -->
-  <button id="theme-toggle" title="Toggle dark/light theme" style="position:fixed;top:16px;right:16px;z-index:9999;background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:8px 13px;font-size:1.1em;cursor:pointer;">
+  <button id="theme-toggle" title="Toggle dark/light theme" style="position:fixed;top:12px;right:12px;z-index:9999;background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:10px 14px;font-size:1.3em;cursor:pointer;min-width:48px;min-height:48px;display:flex;align-items:center;justify-content:center;touch-action:manipulation;">
     🌙
   </button>
   <!-- Global error banner -->
@@ -36,13 +36,13 @@
   </div>
 
   <header>
-    <div class="row" style="margin-left:auto; gap:10px;">
+    <div class="row" style="margin-left:auto; gap:8px; flex-wrap:wrap;">
       <!-- Dynamic ticker input -->
-      <input type="text" id="new-symbol" placeholder="Enter symbol (e.g. ADAUSDT)">
-      <button id="add-chart">+ Add Chart</button>
+      <input type="text" id="new-symbol" placeholder="Symbol" style="min-width:120px;">
+      <button id="add-chart" style="white-space:nowrap;">+ Add</button>
       <!-- Favorites dropdown -->
-      <select id="favorite-select">
-        <option value="">⭐ Favorites</option>
+      <select id="favorite-select" style="min-width:100px;">
+        <option value="">⭐ Favs</option>
       </select>
       <!-- Global status -->
       <div id="status-global">

@@ -35,6 +35,9 @@ html, body {
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
   background: var(--bg);
   color: var(--text);
+  font-size: 16px;
+  -webkit-text-size-adjust: 100%;
+  -webkit-font-smoothing: antialiased;
 }
 
 /* Header */
@@ -42,59 +45,86 @@ header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 6px 12px;
+  padding: 8px 12px;
   border-bottom: 1px solid var(--border);
   background: var(--panel);
+  flex-wrap: wrap;
+  gap: 8px;
+  min-height: 56px;
 }
 .header-left select {
-  padding: 5px 10px;
-  border-radius: 6px;
+  padding: 8px 12px;
+  border-radius: 8px;
   border: 1px solid var(--border);
   background: var(--bg);
   color: var(--text);
-  font-size: 13px;
+  font-size: 15px;
+  min-height: 44px;
+  touch-action: manipulation;
+  cursor: pointer;
 }
 
 /* Input + Add Chart button */
 #new-symbol {
-  padding: 4px 8px;
-  border-radius: 6px;
+  padding: 10px 12px;
+  border-radius: 8px;
   border: 1px solid var(--border);
   background: var(--bg);
   color: var(--text);
-  font-size: 13px;
-  width: 140px;
+  font-size: 15px;
+  min-width: 120px;
+  min-height: 44px;
+  touch-action: manipulation;
 }
 #add-chart {
   background: var(--accent);
   border: none;
-  border-radius: 6px;
-  padding: 8px 16px;
+  border-radius: 8px;
+  padding: 10px 16px;
   color: white;
-  font-size: 16px;
+  font-size: 15px;
   cursor: pointer;
-  min-width: 44px;
+  min-width: 80px;
   min-height: 44px;
+  font-weight: 600;
+  touch-action: manipulation;
 }
 #add-chart:hover { background: #3990ff; }
+
+#favorite-select {
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 15px;
+  min-height: 44px;
+  min-width: 100px;
+  touch-action: manipulation;
+  cursor: pointer;
+}
 
 /* Global status */
 #status-global {
   display: flex;
   align-items: center;
   gap: 6px;
+  padding: 4px 8px;
 }
 .dot-global {
-  width: 10px;
-  height: 10px;
+  width: 12px;
+  height: 12px;
   border-radius: 50%;
   background: var(--danger);
   display: inline-block;
+  flex-shrink: 0;
 }
 #label-global {
-  font-size: 12px;
+  font-size: 13px;
   text-transform: uppercase;
   color: var(--muted);
+  white-space: nowrap;
+  font-weight: 600;
 }
 
 /* Error banner style */
@@ -105,22 +135,24 @@ header {
   right: 0;
   background: var(--danger);
   color: #fff;
-  padding: 12px 0;
+  padding: 14px 12px;
   text-align: center;
   font-weight: bold;
-  font-size: 1.04em;
+  font-size: 15px;
   z-index: 2000;
   box-shadow: 0 4px 16px rgba(0,0,0,0.18);
   border-bottom: 2px solid #b71c1c;
   letter-spacing: 0.02em;
+  word-wrap: break-word;
 }
 
 /* Grid layout */
 main {
-  height: calc(100vh - 40px);
-  padding: 10px;
+  height: calc(100vh - 56px);
+  padding: 12px;
   overflow: hidden;
 }
+
 .chart-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
@@ -128,6 +160,7 @@ main {
   height: 100%;
   grid-auto-rows: 1fr;
 }
+
 .chart-grid:has(.chart-card:nth-child(1):last-child) { grid-template-columns: 1fr; }
 .chart-grid:has(.chart-card:nth-child(4):last-child) { grid-template-columns: repeat(2, 1fr); }
 .chart-grid:has(.chart-card:nth-child(5):last-child) { grid-template-columns: repeat(2, 1fr); }
@@ -158,12 +191,13 @@ main {
 .chart-header {
   display: flex;
   align-items: center;
-  gap: 7px;
-  padding: 6px 10px;
+  gap: 8px;
+  padding: 10px 12px;
   border-bottom: 1px solid var(--border);
   background: #23272e;
-  font-size: 0.95em;
-  min-height: 0;
+  font-size: 1em;
+  min-height: 56px;
+  flex-wrap: wrap;
 }
 
 .ticker-input,
@@ -173,8 +207,18 @@ main {
 .right-controls button {
   font-size: 1em;
   min-width: 0;
-  min-height: 0;
-  padding: 3px 6px;
+  min-height: 44px;
+  padding: 8px 10px;
+  touch-action: manipulation;
+}
+
+.timeframe-select {
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 15px;
 }
 
 .chart-wrap {
@@ -186,7 +230,7 @@ main {
   margin: 0;
   padding: 0;
   position: relative;
-  background: #11161d; /* Ensures chart area is always dark */
+  background: #11161d;
 }
 
 .tvchart {
@@ -196,7 +240,7 @@ main {
   min-height: 0;
   margin: 0;
   padding: 0;
-  background: #11161d !important; /* Force chart background dark */
+  background: #11161d !important;
   border-radius: 0;
   box-sizing: border-box;
 }
@@ -211,12 +255,13 @@ main {
   gap: 6px;
   z-index: 10;
   pointer-events: none;
+  max-width: calc(100% - 60px);
 }
 .chart-wrap .ema-badges span {
   background: rgba(22,27,34,0.85);
   border: 1px solid var(--border);
   border-radius: 6px;
-  padding: 2px 6px;
+  padding: 4px 8px;
   font-size: 13px;
   font-weight: 600;
   color: #fff;
@@ -224,6 +269,7 @@ main {
   pointer-events: auto;
   cursor: default;
   transition: background 0.2s;
+  white-space: nowrap;
 }
 .chart-wrap .ema-badges span:hover {
   background: rgba(40,46,56,0.95);
@@ -232,14 +278,14 @@ main {
 /* Drag handle */
 .drag-handle {
   cursor: grab;
-  font-size: 20px;
-  padding: 4px 8px;
+  font-size: 22px;
+  padding: 8px 12px;
   color: var(--muted);
   user-select: none;
   touch-action: manipulation;
   border-radius: 8px;
-  min-width: 32px;
-  min-height: 32px;
+  min-width: 44px;
+  min-height: 44px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -249,43 +295,46 @@ main {
 .chart-card.dragging .drag-handle { cursor: grabbing; }
 
 /* Ticker + Price */
-.ticker-wrap { display: flex; align-items: center; gap: 6px; }
+.ticker-wrap { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .ticker-input {
   background: none;
   border: none;
   color: var(--text);
   font-weight: 600;
-  font-size: 1em;
-  width: 90px;
-  min-width: 60px;
-  padding: 3px 2px;
-  min-height: 24px;
+  font-size: 16px;
+  width: 100px;
+  min-width: 80px;
+  padding: 8px 4px;
+  min-height: 44px;
+  touch-action: manipulation;
 }
 .current-price {
   font-weight: 700;
   margin-left: 4px;
-  font-size: 1em;
+  font-size: 16px;
+  white-space: nowrap;
 }
 .current-price.up { color: var(--ok); }
 .current-price.down { color: var(--danger); }
 
 /* Controls */
-.right-controls { display: flex; align-items: center; gap: 10px; }
+.right-controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 
 /* Buttons */
 .remove-btn {
   background: transparent;
   border: none;
   color: var(--danger);
-  font-size: 1.2em;
+  font-size: 1.4em;
   cursor: pointer;
   margin-left: 6px;
-  min-width: 32px;
-  min-height: 32px;
+  min-width: 44px;
+  min-height: 44px;
   border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
+  touch-action: manipulation;
 }
 .remove-btn:hover { color: #ff808f; background: var(--border); }
 
@@ -297,16 +346,17 @@ main {
   background: transparent;
   border: none;
   color: var(--text);
-  font-size: 1.2em;
+  font-size: 1.4em;
   cursor: pointer;
-  padding: 6px;
+  padding: 8px;
   border-radius: 8px;
-  min-width: 32px;
-  min-height: 32px;
+  min-width: 44px;
+  min-height: 44px;
   display: flex;
   align-items: center;
   justify-content: center;
   transition: all 0.2s ease;
+  touch-action: manipulation;
 }
 
 .expand-btn:hover,
@@ -337,7 +387,6 @@ main {
 
 .drawing-toolbar button:hover {
   transform: scale(1.1);
-  background: rgba(33, 118, 255, 0.2) !important;
 }
 
 /* Fullscreen mode */
@@ -362,7 +411,7 @@ main {
   overflow: hidden;
   padding: 0;
   margin: 0;
-  background: #161b22; /* Ensure dark background for panels */
+  background: #161b22;
 }
 
 .rsi-panel.active, .macd-panel.active, .indicators-panel.active, .ema-settings-panel.active {
@@ -405,7 +454,7 @@ main {
   position: relative;
   resize: none;
   box-sizing: border-box;
-  background: #161b22; /* Ensure dark background */
+  background: #161b22;
 }
 .rsi-header {
   position: absolute;
@@ -442,7 +491,7 @@ main {
   position: relative;
   resize: none;
   box-sizing: border-box;
-  background: #161b22; /* Ensure dark background */
+  background: #161b22;
 }
 .macd-header {
   position: absolute;
@@ -475,13 +524,14 @@ main {
 .indicator-resize-handle {
   position: absolute;
   bottom: 0; left: 0; right: 0;
-  height: 10px;
+  height: 14px;
   cursor: ns-resize;
   background: linear-gradient(to top, #30363d 60%, transparent 100%);
   z-index: 5;
   border-bottom-left-radius: 8px;
   border-bottom-right-radius: 8px;
   transition: background 0.15s;
+  touch-action: pan-y;
 }
 .indicator-resize-handle:active {
   background: linear-gradient(to top, #58a6ff 80%, transparent 100%);
@@ -562,77 +612,6 @@ main {
 }
 .save-ema-btn:hover { background: #3990ff; }
 
-/* Responsive for mobile/small screens */
-@media (max-width: 900px) {
-  .chart-grid { grid-template-columns: 1fr; }
-  .chart-card {
-    min-width: 0;
-    min-height: 240px;
-    font-size: 14px;
-  }
-  .chart-header {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 6px;
-    padding: 6px 4px;
-    font-size: 0.95em;
-  }
-  .right-controls {
-    gap: 8px;
-    justify-content: flex-end;
-  }
-  .chart-wrap { min-height: 120px; }
-  .indicators-panel {
-    padding: 8px 2px;
-    font-size: 13px;
-    gap: 8px;
-  }
-  .ema-settings-panel {
-    padding: 6px 1px;
-    min-width: 0;
-    width: 100%;
-  }
-  .rsi-panel, .macd-panel {
-    padding: 4px 0;
-  }
-  /* ✅ Mobile Drawing Toolbar */
-  .drawing-toolbar {
-    top: 50px !important;
-    right: 4px !important;
-    flex-wrap: wrap;
-    max-width: 200px;
-  }
-}
-
-/* Extra small screens/mobile stacking */
-@media (max-width: 600px) {
-  .chart-card {
-    min-height: 120px;
-    font-size: 13px;
-  }
-  .chart-header {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 2px;
-    padding: 3px 1px;
-    font-size: 0.92em;
-  }
-  .right-controls {
-    flex-direction: row;
-    gap: 6px;
-    justify-content: flex-end;
-  }
-  .chart-wrap { min-height: 60px; }
-  .ema-settings-panel,
-  .indicators-panel {
-    padding: 4px 1px;
-    font-size: 12px;
-    gap: 4px;
-    width: 100%;
-    min-width: 0;
-  }
-}
-
 /* Drag & Drop */
 .chart-card.dragging {
   z-index: 1000;
@@ -658,15 +637,16 @@ main {
 /* Favorites */
 .favorite-star {
   cursor: pointer;
-  font-size: 22px;
+  font-size: 24px;
   margin-left: 6px;
   color: var(--muted);
   transition: color 0.2s ease, transform 0.2s ease;
-  min-width: 28px;
-  min-height: 28px;
+  min-width: 44px;
+  min-height: 44px;
   display: flex;
   align-items: center;
   justify-content: center;
+  touch-action: manipulation;
 }
 .favorite-star.favorited { color: gold; }
 .favorite-star:hover {
@@ -682,25 +662,30 @@ main {
 
 /* Tooltips/help icons for controls */
 .help-icon {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   margin-left: 6px;
   color: var(--accent);
   cursor: pointer;
-  font-size: 16px;
+  font-size: 18px;
   vertical-align: middle;
   border-radius: 50%;
-  width: 16px;
-  height: 16px;
+  width: 24px;
+  height: 24px;
   text-align: center;
-  line-height: 16px;
+  line-height: 24px;
   outline: none;
   background: rgba(40,46,56,0.6);
   position: relative;
+  min-width: 44px;
+  min-height: 44px;
+  touch-action: manipulation;
 }
 .help-icon:after {
   content: "?";
   font-weight: bold;
-  font-size: 13px;
+  font-size: 15px;
 }
 .help-icon[title] {
   position: relative;
@@ -731,17 +716,27 @@ main {
   background: var(--panel);
   color: var(--text);
   border: 1px solid var(--border);
-  border-radius: 5px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
-  max-height: 200px;
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+  max-height: 250px;
   overflow-y: auto;
   z-index: 3000;
+  font-size: 15px;
 }
 .suggestion-item {
-  padding: 4px 8px;
+  padding: 12px 14px;
   cursor: pointer;
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid var(--border);
+  touch-action: manipulation;
 }
-.suggestion-item:hover {
+.suggestion-item:last-child {
+  border-bottom: none;
+}
+.suggestion-item:hover,
+.suggestion-item:active {
   background: #23272e;
   color: var(--accent);
 }
@@ -773,12 +768,399 @@ main {
   background: rgba(33, 118, 255, 0.15) !important;
 }
 
-/* ✅ Mobile Drawing Toolbar */
+/* ===== MOBILE OPTIMIZATIONS ===== */
+
+/* Responsive for mobile/small screens */
 @media (max-width: 900px) {
+  html, body {
+    font-size: 16px;
+  }
+  
+  main {
+    height: calc(100vh - 70px);
+    padding: 8px;
+  }
+  
+  header {
+    padding: 10px;
+    min-height: auto;
+  }
+  
+  #new-symbol {
+    font-size: 16px;
+    padding: 12px;
+  }
+  
+  #add-chart {
+    font-size: 16px;
+    padding: 12px 16px;
+  }
+  
+  .chart-grid { 
+    grid-template-columns: 1fr;
+    gap: 12px;
+    padding: 8px;
+  }
+  
+  .chart-card {
+    min-width: 0;
+    min-height: 300px;
+    font-size: 16px;
+  }
+  
+  .chart-header {
+    padding: 12px 10px;
+    gap: 10px;
+    font-size: 16px;
+    min-height: auto;
+  }
+  
+  .ticker-input {
+    font-size: 17px;
+    padding: 10px 6px;
+  }
+  
+  .current-price {
+    font-size: 17px;
+  }
+  
+  .timeframe-select {
+    font-size: 16px;
+    padding: 10px 12px;
+  }
+  
+  .right-controls {
+    gap: 12px;
+    justify-content: flex-end;
+  }
+  
+  .right-controls button {
+    font-size: 1.5em;
+    min-width: 48px;
+    min-height: 48px;
+  }
+  
+  .drag-handle {
+    font-size: 24px;
+    min-width: 48px;
+    min-height: 48px;
+  }
+  
+  .favorite-star {
+    font-size: 26px;
+    min-width: 48px;
+    min-height: 48px;
+  }
+  
+  .chart-wrap { 
+    min-height: 200px;
+  }
+  
+  .indicators-panel {
+    padding: 12px;
+    font-size: 16px;
+    gap: 12px;
+  }
+  
+  .indicator-toggles label {
+    font-size: 16px;
+    padding: 8px 0;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+  }
+  
+  .indicator-toggles input[type="checkbox"] {
+    min-width: 24px;
+    min-height: 24px;
+    margin-right: 12px;
+  }
+  
+  .ema-settings-panel {
+    padding: 12px;
+    font-size: 16px;
+    gap: 12px;
+  }
+  
+  .ema-settings-panel input[type="number"] {
+    font-size: 16px;
+    padding: 10px;
+    min-height: 44px;
+  }
+  
+  .save-ema-btn {
+    font-size: 16px;
+    padding: 12px 20px;
+    min-height: 48px;
+  }
+  
+  .rsi-panel, .macd-panel {
+    padding: 8px;
+    min-height: 120px;
+  }
+  
+  .rsi-title, .macd-title {
+    font-size: 14px;
+    padding: 6px 10px;
+  }
+  
+  .indicator-resize-handle {
+    height: 20px;
+  }
+  
+  .chart-wrap .ema-badges {
+    gap: 5px;
+    top: 6px;
+    left: 6px;
+    max-width: calc(100% - 50px);
+  }
+  .chart-wrap .ema-badges span {
+    font-size: 12px;
+    padding: 3px 6px;
+  }
+  
+  /* Drawing Toolbar */
   .drawing-toolbar {
-    top: 50px !important;
-    right: 4px !important;
+    top: 60px !important;
+    right: 8px !important;
     flex-wrap: wrap;
-    max-width: 200px;
+    max-width: 220px;
+    padding: 8px !important;
+    gap: 10px !important;
+  }
+  
+  .drawing-toolbar button {
+    font-size: 1.4em !important;
+    min-width: 44px;
+    min-height: 44px;
+    padding: 8px 12px !important;
+  }
+  
+  .drawing-toolbar input[type="number"],
+  .drawing-toolbar input[type="color"] {
+    min-height: 44px;
+  }
+  
+  /* Suggestion box */
+  #symbol-suggestions {
+    max-height: 200px;
+    font-size: 16px;
+    border-radius: 8px;
+  }
+  
+  .suggestion-item {
+    padding: 14px 16px;
+    min-height: 52px;
+  }
+  
+  .help-icon {
+    font-size: 20px;
+    width: 28px;
+    height: 28px;
+    line-height: 28px;
+  }
+  .help-icon:after {
+    font-size: 16px;
+  }
+  
+  .error-banner {
+    font-size: 15px;
+    padding: 14px 12px;
+  }
+  
+  .header-left select,
+  #favorite-select {
+    font-size: 15px;
+    padding: 10px 12px;
+  }
+  
+  /* Ensure all interactive elements are touch-friendly (44px minimum) */
+  button, select, input, a, .clickable {
+    min-height: 44px !important;
+    min-width: 44px !important;
+  }
+  
+  /* Prevent text from being too small */
+  body, input, select, textarea, button {
+    font-size: 16px !important;
+  }
+  
+  /* Improve tap target spacing */
+  .chart-header > * {
+    margin: 2px;
+  }
+  
+  /* Make modals more mobile-friendly */
+  #custom-indicator-modal > div {
+    margin: 20px auto 0 auto !important;
+    max-width: 95% !important;
+    padding: 16px !important;
+  }
+  
+  #custom-indicator-modal textarea {
+    font-size: 15px !important;
+    min-height: 200px !important;
+  }
+  
+  #custom-indicator-modal button {
+    font-size: 16px !important;
+    padding: 12px 20px !important;
+    min-height: 48px !important;
+  }
+}
+
+/* Extra small screens/mobile stacking */
+@media (max-width: 600px) {
+  html, body {
+    font-size: 16px;
+  }
+  
+  main {
+    height: calc(100vh - 80px);
+    padding: 6px;
+  }
+  
+  header {
+    padding: 10px 8px;
+  }
+  
+  #new-symbol {
+    min-width: 100px;
+    font-size: 16px;
+  }
+  
+  #add-chart {
+    font-size: 15px;
+    padding: 12px;
+    min-width: 70px;
+  }
+  
+  #favorite-select {
+    font-size: 15px;
+    min-width: 90px;
+  }
+  
+  #status-global {
+    padding: 6px;
+  }
+  
+  #label-global {
+    font-size: 12px;
+  }
+  
+  .chart-grid {
+    gap: 10px;
+  }
+  
+  .chart-card {
+    min-height: 280px;
+    font-size: 16px;
+  }
+  
+  .chart-header {
+    padding: 10px 8px;
+    gap: 8px;
+    font-size: 16px;
+  }
+  
+  .ticker-input {
+    font-size: 17px;
+    width: 90px;
+  }
+  
+  .current-price {
+    font-size: 17px;
+  }
+  
+  .timeframe-select {
+    font-size: 15px;
+    padding: 10px;
+  }
+  
+  .right-controls {
+    gap: 10px;
+    justify-content: flex-end;
+  }
+  
+  .right-controls button {
+    font-size: 1.5em;
+    min-width: 48px;
+    min-height: 48px;
+    padding: 10px;
+  }
+  
+  .chart-wrap { 
+    min-height: 180px;
+  }
+  
+  .ema-settings-panel,
+  .indicators-panel {
+    padding: 12px 8px;
+    font-size: 16px;
+    gap: 10px;
+  }
+  
+  .indicators-panel h4 {
+    font-size: 17px;
+  }
+  
+  .indicator-toggles label {
+    font-size: 16px;
+    min-height: 48px;
+  }
+  
+  .ema-settings-panel input[type="number"] {
+    font-size: 16px;
+    min-width: 80px;
+  }
+  
+  .rsi-panel, .macd-panel {
+    min-height: 100px;
+  }
+  
+  .indicator-resize-handle {
+    height: 24px;
+  }
+  
+  .chart-wrap .ema-badges {
+    gap: 4px;
+    top: 4px;
+    left: 4px;
+    max-width: calc(100% - 40px);
+  }
+  .chart-wrap .ema-badges span {
+    font-size: 11px;
+    padding: 2px 5px;
+  }
+  
+  #symbol-suggestions {
+    max-height: 180px;
+    font-size: 16px;
+  }
+  
+  .suggestion-item {
+    padding: 16px;
+    min-height: 56px;
+  }
+  
+  .error-banner {
+    font-size: 14px;
+    padding: 12px 10px;
+  }
+  
+  /* Extra padding for very small screens */
+  .chart-header {
+    padding: 12px 8px !important;
+  }
+  
+  /* Stack controls better on tiny screens */
+  .right-controls {
+    flex-wrap: wrap;
+  }
+  
+  /* Increase touch targets even more on small phones */
+  button, select, input[type="button"], input[type="submit"] {
+    min-height: 48px !important;
+    min-width: 48px !important;
   }
 }
